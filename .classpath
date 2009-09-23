@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry exported="true" kind="con" path="com.google.appengine.eclipse.core.GAE_CONTAINER"/>
+	<classpathentry exported="true" kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry exported="true" kind="lib" path="war/WEB-INF/lib/json.jar"/>
+	<classpathentry exported="true" kind="lib" path="war/WEB-INF/lib/jsonrpc.jar"/>
+	<classpathentry exported="true" kind="lib" path="war/WEB-INF/lib/clojure-1.0.0.jar"/>
+	<classpathentry exported="true" kind="lib" path="war/WEB-INF/lib/clojure-contrib.jar"/>
+	<classpathentry kind="output" path="war/WEB-INF/classes"/>
+</classpath>
