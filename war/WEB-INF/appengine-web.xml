@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appengine-web-app xmlns="http://appengine.google.com/ns/1.0">
-	<application>thewe-stupid1</application>
-	<version>21</version>
+	<application>thewe-0</application>
+	<version>101</version>
 	
 	<!-- Configure java.util.logging -->
 	<system-properties>

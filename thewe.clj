@@ -22,7 +22,7 @@
 ;  (if (coll? (second what)) (do (print (count what)) doall (second what)))
 ;  (try (doall (second what))) ;@todo
 ;  (println what)
-;  (swap! log-buffer str what "\n\n")
+  (swap! log-buffer str what "\n\n")
   (last what))
 
 (defn substring [a b]
@@ -43,7 +43,7 @@
   (pairs-to-map (map #(f (first %) (second %)) m)))
 
 (defn blip-data-to-db-structure [blip-id blip-data]
-  [{:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id blip-id} blip-data])
+  [{:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id blip-id} (blip-data "content")])
 
 (defn disj1 [set x]
   (if set
@@ -56,19 +56,22 @@
   (into {} (for [update updates
         sync-class sync-table :when (contains? sync-class (key update))
         reploc sync-class :when (not= reploc (key update))]
-    [reploc ((val update) "content")])))
+    [reploc (val update)])))
 
 
-(def log-reploc {:wave-id "wavesandbox.com!w+0sqEDj2G%A"
+(def log-reploc {:wave-id "wavesandbox.com!w+TeZzxdl4%A"
                  :wavelet-id "wavesandbox.com!conv+root"
-                 :blip-id "b+0sqEDj2G%B"})
+                 :blip-id "b+TeZzxdl4%B"})
+
+(defn conj1 [x y] x)
+(defn conj1 [x y] (conj x y))
 
 (defn log-opers-to-json [log-opers]
   {
 	"javaClass"  "com.google.wave.api.impl.OperationMessageBundle",
 	"operations"  {
 		"javaClass"  "java.util.ArrayList",
-		"list"  (conj (log "Operations:" (forex [log-oper log-opers :let [reploc (key log-oper)]]
+		"list"  (conj1 (forex [log-oper log-opers :let [reploc (key log-oper)]]
 			{
 				"index"  -1,
 				"waveletId"  (:wavelet-id reploc),
@@ -86,7 +89,7 @@
 				"property"  (val log-oper),
 				"waveId"  (:wave-id reploc),
 				"type"  "DOCUMENT_APPEND"
-			}))
+			})
                         {
 				"index"  0,
 				"waveletId"  (:wavelet-id log-reploc),
@@ -98,11 +101,12 @@
                          ; @todo MAKE THESE FUNCTIONS
                         })
             }
-	"version"  "19"   ; @todo WTF
+	"version"  "101"   ; @todo WTF
 })
 
 (defn containsex? [big small]
   (some #{small} big))
+
 
 (defn update-db [sync-table data]
   (let [db-updates (into {} (for [[blip-id blip-data] (get-in data ["blips" "map"])
@@ -113,7 +117,8 @@
                                    (into {} (for [db-update db-updates
                                                   :when (containsex?
                                                           (for [event (get-in data ["events" "list"])
-                                                                :when (not= (event "modifiedBy") "panda@gwave.com")]
+                                                                :when (not= (log (event "modifiedBy")) "panda@a.gwave.com")
+                                                                :when (= (event "type") "BLIP_SUBMITTED")]
                                                             (get-in event ["properties" "map" "blipId"]))
                                                           ((key db-update) :blip-id))] db-update))))))) ; @todo forex not force db-update at end
 
@@ -128,7 +133,7 @@
 
 (defroutes greeter
   (ANY "/wave"
-    (let [data (log "Events: " (read-json (params :events)))]
+    (let [data (read-json (params :events))]
       (update-db @sync-table data))))
 
 (run-server {:port 31337}
@@ -156,7 +161,8 @@
       "parentBlipId" nil,
       "version" 125,
       "creator" "avital@wavesandbox.com",
-      "content" "hi hi hi\n","blipId" "b+MfdUDFjy%F","javaClass" "com.google.wave.api.impl.BlipData","annotations" {"javaClass" "java.util.ArrayList","list" []},"elements" {"map" {"0" {"javaClass" "com.google.wave.api.Gadget","properties" {"map" {"test" "jjkklll;qqpopslKL\n","_view" "stateUpdated = function(){};","url" "http //wave.thewe.net/gadgets/theWE-wave/theWE-container.xml","_gadget-id" "http //wave.thewe.net/gadgets/theWE-wave/theWE-container.xml0.607755900749904"},"javaClass" "java.util.HashMap"},"type" "GADGET"}},"javaClass" "java.util.HashMap"},"childBlipIds" {"javaClass" "java.util.ArrayList","list" []}}},"javaClass" "java.util.HashMap"},"events" {"javaClass" "java.util.ArrayList","list" [{"timestamp" 1252402678257,"modifiedBy" "avital@wavesandbox.com","javaClass" "com.google.wave.api.impl.EventData","properties" {"map" {"blipId" "b+MfdUDFjy%F"},"javaClass" "java.util.HashMap"},"type" "DOCUMENT_CHANGED"}]},"wavelet" {"lastModifiedTime" 1252402678257,"title" "","waveletId" "wavesandbox.com!conv+root","rootBlipId" "b+MfdUDFjy%F","javaClass" "com.google.wave.api.impl.WaveletData","dataDocuments" {"map" {},"javaClass" "java.util.HashMap"},"creationTime" 1252400711330,"waveId" "wavesandbox.com!w+MfdUDFjy%E","participants" {"javaClass" "java.util.ArrayList","list" ["avital@wavesandbox.com","thewe-experiments@appspot.com","thewe-0@appspot.com","thewe-operator@appspot.com"]},"creator" "avital@wavesandbox.com","version" 129}}
+      "content" "hi hi hi\n","blipId" "b+MfdUDFjy%F","javaClass" "com.google.wave.api.impl.BlipData","annotations" {"javaClass" "java.util.ArrayList","list" []},"elements" {"map" {"0" {"javaClass" "com.google.wave.api.Gadget","properties" {"map" {"test" "jjkklll;qqpopslKL\n","_view" "stateUpdated = function(){};","url" "http //wave.thewe.net/gadgets/theWE-wave/theWE-container.xml","_gadget-id" "http //wave.thewe.net/gadgets/theWE-wave/theWE-container.xml0.607755900749904"},"javaClass" "java.util.HashMap"},"type" "GADGET"}},"javaClass" "java.util.HashMap"},"childBlipIds" {"javaClass" "java.util.ArrayList","list" []}}},"javaClass" "java.util.HashMap"},"events" {"javaClass" "java.util.ArrayList","list" [{"timestamp" 1252402678257,"modifiedBy" "avital@wavesandbox.com","javaClass" "com.google.wave.api.impl.EventData","properties" {"map" {"blipId" "b+MfdUDFjy%F"},"javaClass" "java.util.HashMap"},"type" "DOCUMENT_CHANGED"}]},"wavelet" {"lastModifiedTime" 1252402678257,"title" "","waveletId" "wavesandbox.com!conv+root","rootBlipId" "b+MfdUDFjy%F","javaClass" "com.google.wave.api.impl.WaveletData","dataDocuments" {"map" {},"javaClass" "java.util.HashMap"},"creationTime" 1252400711330,"waveId" "wavesandbox.com!w+MfdUDFjy%E","participants" {"javaClass" "java.util.ArrayList","list" ["avital@wavesandbox.com","thewe-experiments@appspot.com","thewe-0@appspot.com","thewe-operator@appspot.com"]},"creator" "avital@wavesandbox.com","version" 129}
+   }
 )
 
 (def sync-table1 #{#{{:wave-id "wavesandbox.com!w+MfdUDFjy%E" :wavelet-id "wavesandbox.com!conv+root" :blip-id "b+MfdUDFjy%F"}
