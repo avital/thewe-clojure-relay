@@ -1,13 +1,3 @@
-; Explain to Ayal:
-; 1. interleaved log
-; 1.1. (try)
-; 2. FP IS SO GOOD WHAT
-; 3. never use #() unless its SUPER SHORT REALLY
-; 4. Hardly use closures its too hard to follow them use thigns like for
-; 5. WE MUST HAVE A "Lisp Editor" (which will also be a JSON editor in effect, etc). THESE PARENTHESIS MATCHING AND
-;    NEWLINE CALCULATINON ARE TOO HARD
-
-
 (ns we
   (:require clojure.contrib.json.read)
   (:require clojure.contrib.json.write)
