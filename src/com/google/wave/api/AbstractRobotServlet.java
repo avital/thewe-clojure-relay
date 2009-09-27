@@ -97,7 +97,10 @@ public abstract class AbstractRobotServlet extends HttpServlet implements
 		// events.getOperations().setVersion(getVersion());
 		// serializeOperations(events.getOperations(), resp);
 
-		String data = "events=" + URLEncoder.encode(getRequestBody(req), "UTF-8");
+		String events = getRequestBody(req);
+		log("Events: " + events);
+		
+		String data = "events=" + URLEncoder.encode(events, "UTF-8");
 		// Send the request
 		URL url = new URL("http://jem.thewe.net/wave");
 		URLConnection conn = url.openConnection();
