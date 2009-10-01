@@ -21,8 +21,8 @@
 (defn log [& what]
 ;  (if (coll? (second what)) (do (print (count what)) doall (second what)))
 ;  (try (doall (second what))) ;@todo
-;  (println what)
-  (swap! log-buffer str what "\n\n")
+  (println what)
+;  (swap! log-buffer str what "\n\n")
   (last what))
 
 (defn substring [a b]
@@ -42,8 +42,19 @@
 (defn map-map [f m]
   (pairs-to-map (map #(f (first %) (second %)) m)))
 
+
+
 (defn blip-data-to-db-structure [blip-id blip-data]
-  [{:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id blip-id} (blip-data "content")])
+  (let [basic-reploc {:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id blip-id}]
+    (if-let [gadget-map (first (get-in blip-data ["elements" "map"]))]
+      ; there is a gadget here
+      (for [[key val] (get-in (val gadget-map) ["properties" "map"])]
+        [(assoc basic-reploc :type "gadget" :key key) val])
+      ; there is no gadget
+      [[(assoc basic-reploc :type "blip") (blip-data "content")]]
+    )
+  )
+)
 
 (defn disj1 [set x]
   (if set
@@ -145,6 +156,238 @@
 
 
 ; TESTS
+(def null nil)
+
+(def event-without-gadget
+ {"blips"  {
+		"map"  {
+			"b+2ZbR8dl4D"  {
+				"lastModifiedTime"  1254308168017,
+				"contributors"  {
+					"javaClass"  "java.util.ArrayList",
+					"list"  [
+						"ayal@wavesandbox.com",
+						"thewe-experiments@appspot.com"
+					]
+				},
+				"waveletId"  "wavesandbox.com!conv+root",
+				"waveId"  "wavesandbox.com!w+2ZbR8dl4C",
+				"parentBlipId"  null,
+				"version"  13,
+				"creator"  "ayal@wavesandbox.com",
+				"content"  " ",
+				"blipId"  "b+2ZbR8dl4D",
+				"javaClass"  "com.google.wave.api.impl.BlipData",
+				"annotations"  {
+					"javaClass"  "java.util.ArrayList",
+					"list"  [
+						{
+							"range"  {
+								"start"  -1,
+								"javaClass"  "com.google.wave.api.Range",
+								"end"  1
+							},
+							"name"  "conv/title",
+							"value"  "",
+							"javaClass"  "com.google.wave.api.Annotation"
+						}
+					]
+				},
+				"elements"  {
+					"map"  {},
+					"javaClass"  "java.util.HashMap"
+				},
+				"childBlipIds"  {
+					"javaClass"  "java.util.ArrayList",
+					"list"  [
+					]
+				}
+			}
+		},
+		"javaClass"  "java.util.HashMap"
+	},
+	"robotAddress"  "thewe0@appspot.com",
+	"events"  {
+		"javaClass"  "java.util.ArrayList",
+		"list"  [
+			{
+				"timestamp"  1254308174642,
+				"modifiedBy"  "ayal@wavesandbox.com",
+				"javaClass"  "com.google.wave.api.impl.EventData",
+				"properties"  {
+					"map"  {
+						"blipId"  "b+2ZbR8dl4D",
+						"participantsRemoved"  {
+							"javaClass"  "java.util.ArrayList",
+							"list"  [
+							]
+						},
+						"participantsAdded"  {
+							"javaClass"  "java.util.ArrayList",
+							"list"  [
+								"thewe0@appspot.com"
+							]
+						}
+					},
+					"javaClass"  "java.util.HashMap"
+				},
+				"type"  "WAVELET_SELF_ADDED"
+			}
+		]
+	},
+	"wavelet"  {
+		"lastModifiedTime"  1254308174642,
+		"title"  "",
+		"waveletId"  "wavesandbox.com!conv+root",
+		"rootBlipId"  "b+2ZbR8dl4D",
+		"javaClass"  "com.google.wave.api.impl.WaveletData",
+		"dataDocuments"  {
+			"map"  {
+			},
+			"javaClass"  "java.util.HashMap"
+		},
+		"creationTime"  1254308144237,
+		"waveId"  "wavesandbox.com!w+2ZbR8dl4C",
+		"participants"  {
+			"javaClass"  "java.util.ArrayList",
+			"list"  [
+				"ayal@wavesandbox.com",
+				"thewe-experiments@appspot.com",
+				"thewe0@appspot.com"
+			]
+		},
+		"creator"  "ayal@wavesandbox.com",
+		"version"  15
+	}
+})
+
+
+(def event-with-gadget
+  {"blips"  {
+		"map"  {
+			"b+2ZbR8dl4D"  {
+				"lastModifiedTime"  1254308168017,
+				"contributors"  {
+					"javaClass"  "java.util.ArrayList",
+					"list"  [
+						"ayal@wavesandbox.com",
+						"thewe-experiments@appspot.com"
+					]
+				},
+				"waveletId"  "wavesandbox.com!conv+root",
+				"waveId"  "wavesandbox.com!w+2ZbR8dl4C",
+				"parentBlipId"  null,
+				"version"  13,
+				"creator"  "ayal@wavesandbox.com",
+				"content"  " ",
+				"blipId"  "b+2ZbR8dl4D",
+				"javaClass"  "com.google.wave.api.impl.BlipData",
+				"annotations"  {
+					"javaClass"  "java.util.ArrayList",
+					"list"  [
+						{
+							"range"  {
+								"start"  -1,
+								"javaClass"  "com.google.wave.api.Range",
+								"end"  1
+							},
+							"name"  "conv/title",
+							"value"  "",
+							"javaClass"  "com.google.wave.api.Annotation"
+						}
+					]
+				},
+				"elements"  {
+					"map"  {
+						"0"  {
+							"javaClass"  "com.google.wave.api.Gadget",
+							"properties"  {
+								"map"  {
+									"_view"  "stateUpdated = function(){};",
+									"KEY"  "XXX",
+									"url"  "http //wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"
+								},
+								"javaClass"  "java.util.HashMap"
+							},
+							"type"  "GADGET"
+						}
+					},
+					"javaClass"  "java.util.HashMap"
+				},
+				"childBlipIds"  {
+					"javaClass"  "java.util.ArrayList",
+					"list"  [
+					]
+				}
+			}
+		},
+		"javaClass"  "java.util.HashMap"
+	},
+	"robotAddress"  "thewe0@appspot.com",
+	"events"  {
+		"javaClass"  "java.util.ArrayList",
+		"list"  [
+			{
+				"timestamp"  1254308174642,
+				"modifiedBy"  "ayal@wavesandbox.com",
+				"javaClass"  "com.google.wave.api.impl.EventData",
+				"properties"  {
+					"map"  {
+						"blipId"  "b+2ZbR8dl4D",
+						"participantsRemoved"  {
+							"javaClass"  "java.util.ArrayList",
+							"list"  [
+							]
+						},
+						"participantsAdded"  {
+							"javaClass"  "java.util.ArrayList",
+							"list"  [
+								"thewe0@appspot.com"
+							]
+						}
+					},
+					"javaClass"  "java.util.HashMap"
+				},
+				"type"  "WAVELET_SELF_ADDED"
+			}
+		]
+	},
+	"wavelet"  {
+		"lastModifiedTime"  1254308174642,
+		"title"  "",
+		"waveletId"  "wavesandbox.com!conv+root",
+		"rootBlipId"  "b+2ZbR8dl4D",
+		"javaClass"  "com.google.wave.api.impl.WaveletData",
+		"dataDocuments"  {
+			"map"  {
+			},
+			"javaClass"  "java.util.HashMap"
+		},
+		"creationTime"  1254308144237,
+		"waveId"  "wavesandbox.com!w+2ZbR8dl4C",
+		"participants"  {
+			"javaClass"  "java.util.ArrayList",
+			"list"  [
+				"ayal@wavesandbox.com",
+				"thewe-experiments@appspot.com",
+				"thewe0@appspot.com"
+			]
+		},
+		"creator"  "ayal@wavesandbox.com",
+		"version"  15
+	}
+})
+
+(def blip-data-with-gadget (val (first (get-in event-with-gadget ["blips" "map"]))))
+
+(def blip-data-without-gadget (val (first (get-in event-without-gadget ["blips" "map"]))))
+
+(defn test-blip-data-to-db-structure-with-gadget []
+    (blip-data-to-db-structure "12345" blip-data-with-gadget))
+
+(defn test-blip-data-to-db-structure-without-gadget []
+    (blip-data-to-db-structure "12345" blip-data-without-gadget))
+
 
 (reset! sync-table #{})
 
