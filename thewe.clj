@@ -5,7 +5,8 @@
  (:use clojure.contrib.json.read)
  (:use clojure.contrib.json.write)
  (:use clojure.set)
-; (:use compojure)
+ (:use clojure.contrib.pprint)
+ (:use compojure)
 )
 
 
@@ -26,6 +27,9 @@
 (defn dig [map & rest]
   (get-in map rest))
 
+(defn log [x]
+  (println x)
+  x)
 
 ; =============================
 ; ======= Logical Layer =======
@@ -65,7 +69,6 @@
 ;
 ; blip-data:          (dig incoming-wave-map "blips" "map" blip-id)
 
-
 (defn blip-data-to-rep-ops [blip-data]
   (let [basic-rep-loc {:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id (blip-data "blipId")}]
     (if-let [gadget-map (first (dig blip-data "elements" "map"))]
@@ -83,7 +86,7 @@
 
 
 (defn incoming-map-to-rep-ops [incoming]
-  (let [modified-blip-ids 
+  (let [modified-blip-ids
         (for [event (dig incoming "events" "list")
               :when (not (.endsWith (event "modifiedBy") "@a.gwave.com"))
               :when (= (event "type") "BLIP_SUBMITTED")]
@@ -156,7 +159,7 @@
                               (partial rep-op-to-operation gadget-db)
                               rep-ops))
                   }
-   "version"  "101"   ; @todo WTF
+   "version"  "102"   ; @todo WTF
    })
 
 
@@ -185,20 +188,21 @@
 
 
 
+(defroutes greeter
+  (ANY "/wave"
+    (let [rep-ops (incoming-map-to-rep-ops
+                    (read-json
+                      (params :events)))]
+      (update-db! rep-ops)
+      (json-str
+        (rep-ops-to-outgoing-map @gadget-db
+          (do-replication @rep-rules rep-ops))))))
 
-;(defroutes greeter
-;  (ANY "/wave"
-;    (let [rep-ops (incoming-map-to-rep-ops
-;                    (read-json
-;                      (params :events)))]
-;      (json-str
-;        (rep-ops-to-outgoing-map @gadget-db
-;          (do-replication @rep-rules rep-ops)))
-;      (update-db! rep-ops))))
 
+; @todo: WHY CAN'T WE REP A GADGET STATE KEY WITH QUOTATION MARKS ("")?
 
-;(run-server {:port 31337}
-;  "/*" (servlet greeter))
+(run-server {:port 31337}
+  "/*" (servlet greeter))
 
 
 
@@ -225,7 +229,7 @@
 ; TESTS
 (def null nil)
 
-(def event-without-gadget
+(def incoming-map-without-gadget
   {"blips"  {
              "map"  {
                      "b+2ZbR8dl4D"  {
@@ -242,7 +246,7 @@
                                      "parentBlipId"  null,
                                      "version"  13,
                                      "creator"  "ayal@wavesandbox.com",
-                                     "content"  " ",
+                                     "content"  "CONTENT",
                                      "blipId"  "b+2ZbR8dl4D",
                                      "javaClass"  "com.google.wave.api.impl.BlipData",
                                      "annotations"  {
@@ -329,7 +333,10 @@
    })
 
 
-(def event-with-gadget
+(def incoming-map-without-gadget-blip-submitted 
+  (assoc-in incoming-map-without-gadget ["events" "list" 0 "type"] "BLIP_SUBMITTED"))
+
+(def incoming-map-with-gadget
   {"blips"  {
              "map"  {
                      "b+2ZbR8dl4D"  {
@@ -415,7 +422,7 @@
                                                },
                                        "javaClass"  "java.util.HashMap"
                                        },
-                        "type"  "WAVELET_SELF_ADDED"
+                        "type"  "BLIP_SUBMITTED"
                         }
                        ]
               },
@@ -444,6 +451,83 @@
                "version"  15
                }
    })
+
+
+(defn run-test [gadget-db rep-rules incoming-map]
+  (rep-ops-to-outgoing-map gadget-db
+    (do-replication rep-rules (incoming-map-to-rep-ops incoming-map))))
+
+(def rep-rules1 #{#{{
+                    :type "blip"
+                    :blip-id "b+2ZbR8dl4D"
+                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
+                    :wavelet-id "wavesandbox.com!conv+root"
+                    }
+                   {
+                    :type "blip"
+                    :blip-id "blippy"
+                    :wave-id "wavey"
+                    :wavelet-id "wavelety"
+                    }
+                   {
+                    :type "gadget"
+                    :blip-id "b+2ZbR8dl4D"
+                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
+                    :wavelet-id "wavesandbox.com!conv+root"
+                    :key "KEY"
+                    }
+                   {
+                    :type "gadget"
+                    :blip-id "BLIP GADGET"
+                    :wave-id "BLIP WAVE"
+                    :wavelet-id "BLIP WAVELET"
+                    :key "BLIP KEY"
+                    }
+
+                    }})
+
+(defn test1 []
+  (run-test {} rep-rules1 incoming-map-without-gadget))
+
+(defn test2 []
+  (do-replication rep-rules1 (incoming-map-to-rep-ops incoming-map-without-gadget)))
+
+(defn test3 []
+  (incoming-map-to-rep-ops incoming-map-without-gadget))
+
+(defn test4 []
+  (run-test {} rep-rules1 incoming-map-without-gadget-blip-submitted))
+
+(defn test5 []
+  (do-replication rep-rules1 (incoming-map-to-rep-ops incoming-map-without-gadget-blip-submitted)))
+
+(defn test6 []
+  (incoming-map-to-rep-ops incoming-map-without-gadget-blip-submitted))
+
+(defn test7 []
+  (run-test {{
+                    :blip-id "b+2ZbR8dl4D"
+                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
+                    :wavelet-id "wavesandbox.com!conv+root"
+                    } {"A" "B", "C" "D"}}
+    rep-rules1 incoming-map-without-gadget-blip-submitted))
+
+(defn test8 []
+  (run-test {{
+                    :blip-id "b+2ZbR8dl4D"
+                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
+                    :wavelet-id "wavesandbox.com!conv+root"
+                    } {"A" "B", "C" "D"}}
+    rep-rules1 incoming-map-with-gadget))
+
+(defn test9 []
+  (incoming-map-to-rep-ops incoming-map-with-gadget))
+
+(defn test10 []
+  (do-replication rep-rules1 (incoming-map-to-rep-ops incoming-map-with-gadget)))
+
+
+
 
 (def blip-data-with-gadget (val (first (get-in event-with-gadget ["blips" "map"]))))
 
@@ -536,8 +620,6 @@
    }
   )
 
-(def rep-rules1 #{#{{:wave-id "wavesandbox.com!w+MfdUDFjy%E" :wavelet-id "wavesandbox.com!conv+root" :blip-id "b+MfdUDFjy%F"}
-                     {:wave-id "a" :wavelet-id "b" :blip-id "c"}}})
 
 
 

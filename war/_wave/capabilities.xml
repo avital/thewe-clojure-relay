@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <w:robot xmlns:w="http://wave.google.com/extensions/robots/1.0">
   <w:capabilities>
-    <w:capability name="document_changed" content="true" />
     <w:capability name="blip_submitted" content="true" />
   </w:capabilities>
-  <w:version>101</w:version>
+  <w:version>102</w:version>
 </w:robot>
