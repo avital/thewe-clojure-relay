@@ -5,9 +5,7 @@
  (:use clojure.contrib.json.read)
  (:use clojure.contrib.json.write)
  (:use clojure.set)
- (:use clojure.contrib.pprint)
- (:use compojure)
-)
+ (:use clojure.contrib.pprint))
 
 
 ; =====================
@@ -108,9 +106,16 @@
 ; outgoing-map:  Some crazy Google format of a map that contains information on which
 ;                operations the robot will do
 
-(defn rep-op-to-operation [gadget-db rep-op]
-  (let [rep-loc (rep-op :rep-loc) wave-id (:wave-id rep-loc) wavelet-id (:wavelet-id rep-loc) blip-id (:blip-id rep-loc) content (:content rep-op)]
-    (if (= (rep-loc :type) "blip")
+; @todo - not nice to have fn here
+(defmulti rep-op-to-operations
+  (fn [- rep-op] {:loc-type (dig rep-op :rep-loc :type) :action (rep-op :action)}))
+
+; nil means replace
+(defmethod rep-op-to-operations {:loc-type "blip" :action nil} [gadget-db rep-op]
+  (let [rep-loc (rep-op :rep-loc)
+        wave-id (:wave-id rep-loc)
+        wavelet-id (:wavelet-id rep-loc)
+        blip-id (:blip-id rep-loc) ]
       [{
         "index"  -1,
         "waveletId"  wavelet-id,
@@ -125,28 +130,32 @@
         "waveletId"  wavelet-id,
         "blipId"  blip-id,
         "javaClass"  "com.google.wave.api.impl.OperationImpl",
-        "property"  content,
+        "property"  (:content rep-op),
         "waveId"  wave-id,
         "type"  "DOCUMENT_APPEND"
-        }]
-      ; else this is a gadget
+        }]))
+
+(defmethod rep-op-to-operations {:loc-type "gadget" :action nil} [gadget-db rep-op]
+  (let [rep-loc (rep-op :rep-loc)]
       [{
         "index" 1,
-        "waveletId" wavelet-id,
-        "blipId" blip-id,
+        "waveletId" (:wavelet-id rep-loc),
+        "blipId" (:blip-id rep-loc),
         "javaClass" "com.google.wave.api.impl.OperationImpl",
         "property" {
                     "javaClass" "com.google.wave.api.Gadget",
                     "properties" {
-                                  "map" (assoc (gadget-db (dissoc rep-loc :key :type)) (:key rep-loc) content)
+                                  "map" (assoc 
+                                          (gadget-db (dissoc rep-loc :key :type))
+                                          (:key rep-loc)
+                                          (:content rep-op))
                                   "javaClass" "java.util.HashMap"
                                   },
                     "type" "GADGET"
                     },
-        "waveId" wave-id,
+        "waveId" (:wave-id rep-loc),
         "type" "DOCUMENT_ELEMENT_REPLACE"
-        }])))
-
+        }]))
 
 
 (defn rep-ops-to-outgoing-map [gadget-db rep-ops]
@@ -156,7 +165,7 @@
                   "javaClass"  "java.util.ArrayList",
                   "list"  (apply concat
                             (map
-                              (partial rep-op-to-operation gadget-db)
+                              (partial rep-op-to-operations gadget-db)
                               rep-ops))
                   }
    "version"  "102"   ; @todo WTF
@@ -177,365 +186,5 @@
 
 
 
-; ==========================
-; ======= Web Server =======
-; ==========================
-
-
-(defn update-db! [rep-ops]
-  (swap! db into
-    (for [rep-op rep-ops] [(:rep-loc rep-op) (:content rep-op)])))
-
-
-
-(defroutes greeter
-  (ANY "/wave"
-    (let [rep-ops (incoming-map-to-rep-ops
-                    (read-json
-                      (params :events)))]
-      (update-db! rep-ops)
-      (json-str
-        (rep-ops-to-outgoing-map @gadget-db
-          (do-replication @rep-rules rep-ops))))))
-
-
 ; @todo: WHY CAN'T WE REP A GADGET STATE KEY WITH QUOTATION MARKS ("")?
-
-(run-server {:port 31337}
-  "/*" (servlet greeter))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-; TESTS
-(def null nil)
-
-(def incoming-map-without-gadget
-  {"blips"  {
-             "map"  {
-                     "b+2ZbR8dl4D"  {
-                                     "lastModifiedTime"  1254308168017,
-                                     "contributors"  {
-                                                      "javaClass"  "java.util.ArrayList",
-                                                      "list"  [
-                                                               "ayal@wavesandbox.com",
-                                                               "thewe-experiments@appspot.com"
-                                                               ]
-                                                      },
-                                     "waveletId"  "wavesandbox.com!conv+root",
-                                     "waveId"  "wavesandbox.com!w+2ZbR8dl4C",
-                                     "parentBlipId"  null,
-                                     "version"  13,
-                                     "creator"  "ayal@wavesandbox.com",
-                                     "content"  "CONTENT",
-                                     "blipId"  "b+2ZbR8dl4D",
-                                     "javaClass"  "com.google.wave.api.impl.BlipData",
-                                     "annotations"  {
-                                                     "javaClass"  "java.util.ArrayList",
-                                                     "list"  [
-                                                              {
-                                                               "range"  {
-                                                                         "start"  -1,
-                                                                         "javaClass"  "com.google.wave.api.Range",
-                                                                         "end"  1
-                                                                         },
-                                                               "name"  "conv/title",
-                                                               "value"  "",
-                                                               "javaClass"  "com.google.wave.api.Annotation"
-                                                               }
-                                                              ]
-                                                     },
-                                     "elements"  {
-                                                  "map"  {},
-                                                  "javaClass"  "java.util.HashMap"
-                                                  },
-                                     "childBlipIds"  {
-                                                      "javaClass"  "java.util.ArrayList",
-                                                      "list"  [
-                                                               ]
-                                                      }
-                                     }
-                     },
-             "javaClass"  "java.util.HashMap"
-             },
-   "robotAddress"  "thewe0@appspot.com",
-   "events"  {
-              "javaClass"  "java.util.ArrayList",
-              "list"  [
-                       {
-                        "timestamp"  1254308174642,
-                        "modifiedBy"  "ayal@wavesandbox.com",
-                        "javaClass"  "com.google.wave.api.impl.EventData",
-                        "properties"  {
-                                       "map"  {
-                                               "blipId"  "b+2ZbR8dl4D",
-                                               "participantsRemoved"  {
-                                                                       "javaClass"  "java.util.ArrayList",
-                                                                       "list"  [
-                                                                                ]
-                                                                       },
-                                               "participantsAdded"  {
-                                                                     "javaClass"  "java.util.ArrayList",
-                                                                     "list"  [
-                                                                              "thewe0@appspot.com"
-                                                                              ]
-                                                                     }
-                                               },
-                                       "javaClass"  "java.util.HashMap"
-                                       },
-                        "type"  "WAVELET_SELF_ADDED"
-                        }
-                       ]
-              },
-   "wavelet"  {
-               "lastModifiedTime"  1254308174642,
-               "title"  "",
-               "waveletId"  "wavesandbox.com!conv+root",
-               "rootBlipId"  "b+2ZbR8dl4D",
-               "javaClass"  "com.google.wave.api.impl.WaveletData",
-               "dataDocuments"  {
-                                 "map"  {
-                                         },
-                                 "javaClass"  "java.util.HashMap"
-                                 },
-               "creationTime"  1254308144237,
-               "waveId"  "wavesandbox.com!w+2ZbR8dl4C",
-               "participants"  {
-                                "javaClass"  "java.util.ArrayList",
-                                "list"  [
-                                         "ayal@wavesandbox.com",
-                                         "thewe-experiments@appspot.com",
-                                         "thewe0@appspot.com"
-                                         ]
-                                },
-               "creator"  "ayal@wavesandbox.com",
-               "version"  15
-               }
-   })
-
-
-(def incoming-map-without-gadget-blip-submitted 
-  (assoc-in incoming-map-without-gadget ["events" "list" 0 "type"] "BLIP_SUBMITTED"))
-
-(def incoming-map-with-gadget
-  {"blips"  {
-             "map"  {
-                     "b+2ZbR8dl4D"  {
-                                     "lastModifiedTime"  1254308168017,
-                                     "contributors"  {
-                                                      "javaClass"  "java.util.ArrayList",
-                                                      "list"  [
-                                                               "ayal@wavesandbox.com",
-                                                               "thewe-experiments@appspot.com"
-                                                               ]
-                                                      },
-                                     "waveletId"  "wavesandbox.com!conv+root",
-                                     "waveId"  "wavesandbox.com!w+2ZbR8dl4C",
-                                     "parentBlipId"  null,
-                                     "version"  13,
-                                     "creator"  "ayal@wavesandbox.com",
-                                     "content"  " ",
-                                     "blipId"  "b+2ZbR8dl4D",
-                                     "javaClass"  "com.google.wave.api.impl.BlipData",
-                                     "annotations"  {
-                                                     "javaClass"  "java.util.ArrayList",
-                                                     "list"  [
-                                                              {
-                                                               "range"  {
-                                                                         "start"  -1,
-                                                                         "javaClass"  "com.google.wave.api.Range",
-                                                                         "end"  1
-                                                                         },
-                                                               "name"  "conv/title",
-                                                               "value"  "",
-                                                               "javaClass"  "com.google.wave.api.Annotation"
-                                                               }
-                                                              ]
-                                                     },
-                                     "elements"  {
-                                                  "map"  {
-                                                          "0"  {
-                                                                "javaClass"  "com.google.wave.api.Gadget",
-                                                                "properties"  {
-                                                                               "map"  {
-                                                                                       "_view"  "stateUpdated = function(){};",
-                                                                                       "KEY"  "XXX",
-                                                                                       "url"  "http //wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"
-                                                                                       },
-                                                                               "javaClass"  "java.util.HashMap"
-                                                                               },
-                                                                "type"  "GADGET"
-                                                                }
-                                                          },
-                                                  "javaClass"  "java.util.HashMap"
-                                                  },
-                                     "childBlipIds"  {
-                                                      "javaClass"  "java.util.ArrayList",
-                                                      "list"  [
-                                                               ]
-                                                      }
-                                     }
-                     },
-             "javaClass"  "java.util.HashMap"
-             },
-   "robotAddress"  "thewe0@appspot.com",
-   "events"  {
-              "javaClass"  "java.util.ArrayList",
-              "list"  [
-                       {
-                        "timestamp"  1254308174642,
-                        "modifiedBy"  "ayal@wavesandbox.com",
-                        "javaClass"  "com.google.wave.api.impl.EventData",
-                        "properties"  {
-                                       "map"  {
-                                               "blipId"  "b+2ZbR8dl4D",
-                                               "participantsRemoved"  {
-                                                                       "javaClass"  "java.util.ArrayList",
-                                                                       "list"  [
-                                                                                ]
-                                                                       },
-                                               "participantsAdded"  {
-                                                                     "javaClass"  "java.util.ArrayList",
-                                                                     "list"  [
-                                                                              "thewe0@appspot.com"
-                                                                              ]
-                                                                     }
-                                               },
-                                       "javaClass"  "java.util.HashMap"
-                                       },
-                        "type"  "BLIP_SUBMITTED"
-                        }
-                       ]
-              },
-   "wavelet"  {
-               "lastModifiedTime"  1254308174642,
-               "title"  "",
-               "waveletId"  "wavesandbox.com!conv+root",
-               "rootBlipId"  "b+2ZbR8dl4D",
-               "javaClass"  "com.google.wave.api.impl.WaveletData",
-               "dataDocuments"  {
-                                 "map"  {
-                                         },
-                                 "javaClass"  "java.util.HashMap"
-                                 },
-               "creationTime"  1254308144237,
-               "waveId"  "wavesandbox.com!w+2ZbR8dl4C",
-               "participants"  {
-                                "javaClass"  "java.util.ArrayList",
-                                "list"  [
-                                         "ayal@wavesandbox.com",
-                                         "thewe-experiments@appspot.com",
-                                         "thewe0@appspot.com"
-                                         ]
-                                },
-               "creator"  "ayal@wavesandbox.com",
-               "version"  15
-               }
-   })
-
-
-(defn run-test [gadget-db rep-rules incoming-map]
-  (rep-ops-to-outgoing-map gadget-db
-    (do-replication rep-rules (incoming-map-to-rep-ops incoming-map))))
-
-(def rep-rules1 #{#{{
-                    :type "blip"
-                    :blip-id "b+2ZbR8dl4D"
-                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
-                    :wavelet-id "wavesandbox.com!conv+root"
-                    }
-                   {
-                    :type "blip"
-                    :blip-id "blippy"
-                    :wave-id "wavey"
-                    :wavelet-id "wavelety"
-                    }
-                   {
-                    :type "gadget"
-                    :blip-id "b+2ZbR8dl4D"
-                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
-                    :wavelet-id "wavesandbox.com!conv+root"
-                    :key "KEY"
-                    }
-                   {
-                    :type "gadget"
-                    :blip-id "BLIP GADGET"
-                    :wave-id "BLIP WAVE"
-                    :wavelet-id "BLIP WAVELET"
-                    :key "BLIP KEY"
-                    }
-
-                    }})
-
-(defn test1 []
-  (run-test {} rep-rules1 incoming-map-without-gadget))
-
-(defn test2 []
-  (do-replication rep-rules1 (incoming-map-to-rep-ops incoming-map-without-gadget)))
-
-(defn test3 []
-  (incoming-map-to-rep-ops incoming-map-without-gadget))
-
-(defn test4 []
-  (run-test {} rep-rules1 incoming-map-without-gadget-blip-submitted))
-
-(defn test5 []
-  (do-replication rep-rules1 (incoming-map-to-rep-ops incoming-map-without-gadget-blip-submitted)))
-
-(defn test6 []
-  (incoming-map-to-rep-ops incoming-map-without-gadget-blip-submitted))
-
-(defn test7 []
-  (run-test {{
-                    :blip-id "b+2ZbR8dl4D"
-                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
-                    :wavelet-id "wavesandbox.com!conv+root"
-                    } {"A" "B", "C" "D"}}
-    rep-rules1 incoming-map-without-gadget-blip-submitted))
-
-(defn test8 []
-  (run-test {{
-                    :blip-id "b+2ZbR8dl4D"
-                    :wave-id "wavesandbox.com!w+2ZbR8dl4C"
-                    :wavelet-id "wavesandbox.com!conv+root"
-                    } {"A" "B", "C" "D"}}
-    rep-rules1 incoming-map-with-gadget))
-
-(defn test9 []
-  (incoming-map-to-rep-ops incoming-map-with-gadget))
-
-(defn test10 []
-  (do-replication rep-rules1 (incoming-map-to-rep-ops incoming-map-with-gadget)))
-
-
-
-
-(def blip-data-with-gadget (val (first (get-in event-with-gadget ["blips" "map"]))))
-
-(def blip-data-without-gadget (val (first (get-in event-without-gadget ["blips" "map"]))))
-
-(defn test-blip-data-to-db-structure-with-gadget []
-  (blip-data-to-rep-ops "12345" blip-data-with-gadget))
-
-(defn test-blip-data-to-db-structure-without-gadget []
-  (blip-data-to-rep-ops "12345" blip-data-without-gadget))
 
