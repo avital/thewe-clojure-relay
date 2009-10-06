@@ -3,5 +3,6 @@
   <w:capabilities>
     <w:capability name="blip_submitted" content="true" />
   </w:capabilities>
-  <w:version>102</w:version>
+  <w:profile name="theWE" imageurl="http://a3.twimg.com/profile_images/401079957/256px-Circle.svg_bigger.png" profileurl="http://thewe.net"/>
+  <w:version>103</w:version>
 </w:robot>

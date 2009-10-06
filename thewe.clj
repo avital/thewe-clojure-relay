@@ -106,6 +106,7 @@
 ; outgoing-map:  Some crazy Google format of a map that contains information on which
 ;                operations the robot will do
 
+
 ; @todo - not nice to have fn here
 (defmulti rep-op-to-operations
   (fn [- rep-op] {:loc-type (dig rep-op :rep-loc :type) :action (rep-op :action)}))
@@ -133,6 +134,20 @@
         "property"  (:content rep-op),
         "waveId"  wave-id,
         "type"  "DOCUMENT_APPEND"
+        }]))
+
+; @todo: what is the difference between using "append" and :append?
+
+(defmethod rep-op-to-operations {:loc-type "blip" :action "insert"} [gadget-db rep-op]
+  (let [rep-loc (rep-op :rep-loc)]
+      [{
+        "index"  (:index rep-op),
+        "waveletId"  (:wavelet-id rep-loc),
+        "blipId"  (:blip-id rep-loc),
+        "javaClass"  "com.google.wave.api.impl.OperationImpl",
+        "property"  (:content rep-op),
+        "waveId"  (:wave-id rep-loc),
+        "type"  "DOCUMENT_INSERT"
         }]))
 
 (defmethod rep-op-to-operations {:loc-type "gadget" :action nil} [gadget-db rep-op]
@@ -168,7 +183,7 @@
                               (partial rep-op-to-operations gadget-db)
                               rep-ops))
                   }
-   "version"  "102"   ; @todo WTF
+   "version"  "103"   ; @todo WTF
    })
 
 
@@ -187,4 +202,43 @@
 
 
 ; @todo: WHY CAN'T WE REP A GADGET STATE KEY WITH QUOTATION MARKS ("")?
+
+
+; ====================
+; ======= REPL =======
+; ====================
+
+(def *current-rep-loc* {})
+
+(defn repl-details [rep-op]
+  (let [content (:content rep-op) last-open-index (.lastIndexOf content "[;")]
+    (if (= last-open-index -1)
+      nil
+      (let [last-close-index (.indexOf content ";]" last-open-index)]
+        (if (= last-close-index -1)
+          nil
+          (if (or
+                (<= (.length content) (+ last-close-index 2))
+                (not= (.charAt content (+ last-close-index 2)) \*))
+            {:index (+ last-close-index 2)
+             :content (str "*\n" 
+                        (binding [*current-rep-loc* (:rep-loc rep-op)] 
+                          (eval (read-string (.substring content (+ last-open-index 2) last-close-index))))
+                        "\n[;")}
+            nil))))))
+
+; @todo: better name?
+(defn do-repl [rep-ops]
+  (for [rep-op rep-ops
+        :let [details (repl-details rep-op)]
+        :when details]
+    (merge (assoc rep-op :action "insert") details)))
+
+
+
+
+
+
+
+
 

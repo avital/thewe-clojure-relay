@@ -13,7 +13,9 @@
       (update-db! rep-ops)
       (json-str
         (rep-ops-to-outgoing-map @gadget-db
-          (do-replication @rep-rules rep-ops))))))
+          (concat
+            (do-replication @rep-rules rep-ops)
+            (do-repl rep-ops)))))))
 
 (run-server {:port 31337}
   "/*" (servlet server))
