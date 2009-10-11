@@ -25,9 +25,13 @@
 (defn dig [map & rest]
   (get-in map rest))
 
-(defn log [x]
-  (println x)
-  x)
+
+(def log-list (atom []))
+
+(defn log [x y]
+  (println x y)
+  (swap! log-list conj [x y])
+  y)
 
 ; =============================
 ; ======= Logical Layer =======
@@ -44,10 +48,20 @@
 ; rep-rules:  A set of sets (a partition) of rep-locs
 
 
+; @todo: can this be better?
+; checks whether the rep-op satisfies the rep-loc definition
+(defn match-rep-loc [rep-op rep-loc]
+  (if (log "blip-id reploc" (:blip-id rep-loc))
+    (= (:rep-loc rep-op) rep-loc)
+    (and
+      (= (log "d1" (dissoc (:rep-loc rep-op) :blip-id)) (log "d2" (dissoc rep-loc :blip-id :subcontent)))
+      (log "contains" (.contains (log "content" (:content rep-op)) (log "subcontent" (:subcontent rep-loc)))))))
+
+
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
 (defn do-replication [rep-rules rep-ops]
   (for [rep-op rep-ops
-        rep-class rep-rules :when (contains? rep-class (:rep-loc rep-op))
+        rep-class rep-rules :when (some (partial match-rep-loc rep-op) rep-class)
         rep-loc rep-class :when (not= rep-loc (:rep-loc rep-op))]
     {:rep-loc rep-loc :content (:content rep-op)}))
 
@@ -112,11 +126,12 @@
   (fn [- rep-op] {:loc-type (dig rep-op :rep-loc :type) :action (rep-op :action)}))
 
 ; nil means replace
-(defmethod rep-op-to-operations {:loc-type "blip" :action nil} [gadget-db rep-op]
+(defmethod rep-op-to-operations {:loc-type "blip" :action nil} [- rep-op]
   (let [rep-loc (rep-op :rep-loc)
         wave-id (:wave-id rep-loc)
         wavelet-id (:wavelet-id rep-loc)
         blip-id (:blip-id rep-loc) ]
+    (if blip-id
       [{
         "index"  -1,
         "waveletId"  wavelet-id,
@@ -134,11 +149,28 @@
         "property"  (:content rep-op),
         "waveId"  wave-id,
         "type"  "DOCUMENT_APPEND"
+        }]
+    [])))
+
+(defmethod rep-op-to-operations {:loc-type "blip" :action "delete"} [- rep-op]
+  (let [rep-loc (rep-op :rep-loc)
+        wave-id (:wave-id rep-loc)
+        wavelet-id (:wavelet-id rep-loc)
+        blip-id (:blip-id rep-loc) ]
+      [{
+        "index"  -1,
+        "waveletId"  wavelet-id,
+        "blipId"  blip-id,
+        "javaClass"  "com.google.wave.api.impl.OperationImpl",
+        "property"  nil,
+        "waveId"  wave-id,
+        "type"  "DOCUMENT_DELETE"
         }]))
+
 
 ; @todo: what is the difference between using "append" and :append?
 
-(defmethod rep-op-to-operations {:loc-type "blip" :action "insert"} [gadget-db rep-op]
+(defmethod rep-op-to-operations {:loc-type "blip" :action "insert"} [- rep-op]
   (let [rep-loc (rep-op :rep-loc)]
       [{
         "index"  (:index rep-op),
@@ -151,6 +183,7 @@
         }]))
 
 (defmethod rep-op-to-operations {:loc-type "gadget" :action nil} [gadget-db rep-op]
+  ; @todo: DON'T HAVE THIS DUPLICATION!!! use some sort of basic-rep-op
   (let [rep-loc (rep-op :rep-loc)]
       [{
         "index" 1,
@@ -172,16 +205,65 @@
         "type" "DOCUMENT_ELEMENT_REPLACE"
         }]))
 
+(defmethod rep-op-to-operations {:loc-type "blip" :action "append-gadget"} [- rep-op]
+  ; @todo: DON'T HAVE THIS DUPLICATION!!! use some sort of basic-rep-op
+  (let [rep-loc (rep-op :rep-loc)]
+    ; @todo: HORRIBLE
+    (swap! gadget-db assoc (dissoc (:rep-loc rep-op) :type) (:state rep-op))
+      [{
+        "index" 0,
+        "waveletId" (:wavelet-id rep-loc),
+        "blipId" (:blip-id rep-loc),
+        "javaClass" "com.google.wave.api.impl.OperationImpl",
+        "property" {
+                    "javaClass" "com.google.wave.api.Gadget",
+                    "properties" {
+                                  "map" (:state rep-op)
+                                  "javaClass" "java.util.HashMap"
+                                  },
+                    "type" "GADGET"
+                    },
+        "waveId" (:wave-id rep-loc),
+        "type" "DOCUMENT_ELEMENT_APPEND"
+        }]))
+
+
+
+
+(defmethod rep-op-to-operations {:loc-type "blip" :action "create-child-blip"} [- rep-op]
+  (let [rep-loc (rep-op :rep-loc)]
+ [{"index" -1,
+  "waveletId" (:wavelet-id rep-loc),
+  "blipId" (:blip-id rep-loc),
+  "javaClass" "com.google.wave.api.impl.OperationImpl",
+  "property" {
+              "lastModifiedTime" -1,
+              "contributors" {"javaClass" "java.util.ArrayList",
+                              "list" []},
+              "waveletId" (:wavelet-id rep-loc),
+              "waveId" (:wave-id rep-loc),
+              "parentBlipId" nil,
+              "version" -1,
+              "creator" nil,
+              "content" "",
+              "blipId" (:child-blip-id rep-op),
+              "javaClass" "com.google.wave.api.impl.BlipData",
+              "annotations" {"javaClass" "java.util.ArrayList",
+                             "list" []},
+              "elements" {"map" {},"javaClass" "java.util.HashMap"},
+              "childBlipIds" {"javaClass" "java.util.ArrayList",
+                              "list" []}},
+  "waveId" (:wave-id rep-loc),
+  "type" "BLIP_CREATE_CHILD"}]))
 
 (defn rep-ops-to-outgoing-map [gadget-db rep-ops]
   {
    "javaClass"  "com.google.wave.api.impl.OperationMessageBundle",
    "operations"  {
                   "javaClass"  "java.util.ArrayList",
-                  "list"  (apply concat
-                            (map
-                              (partial rep-op-to-operations gadget-db)
-                              rep-ops))
+                  "list"  (mapcat
+                            (partial rep-op-to-operations gadget-db)
+                            rep-ops)
                   }
    "version"  "103"   ; @todo WTF
    })
@@ -208,37 +290,42 @@
 ; ======= REPL =======
 ; ====================
 
-(def *current-rep-loc* {})
+(def *current-rep-loc*)
 
-(defn repl-details [rep-op]
+(defn view-dev []
+  (swap! rep-rules conj #{(assoc *current-rep-loc* :type "gadget" :key "_view")
+                          (dissoc (assoc *current-rep-loc* :subcontent "js") :blip-id)})
+
+  [
+   {:rep-loc *current-rep-loc* :action "delete"}
+   {:rep-loc *current-rep-loc* :action "append-gadget" :state 
+     {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
+      "_view" "alert(2)"
+      "author" "avital@wavesandbox.com"}}
+   {:rep-loc *current-rep-loc* :action "create-child-blip" :child-blip-id "html"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "html") :content "<!-- html -->"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "css") :content "// css"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "js") :content "js"}
+  ]
+)
+
+(defn repl-outgoing-ops [rep-op]
   (let [content (:content rep-op) last-open-index (.lastIndexOf content "[;")]
     (if (= last-open-index -1)
-      nil
+      []
       (let [last-close-index (.indexOf content ";]" last-open-index)]
         (if (= last-close-index -1)
-          nil
+          []
           (if (or
                 (<= (.length content) (+ last-close-index 2))
                 (not= (.charAt content (+ last-close-index 2)) \*))
-            {:index (+ last-close-index 2)
-             :content (str "*\n" 
-                        (binding [*current-rep-loc* (:rep-loc rep-op)] 
-                          (eval (read-string (.substring content (+ last-open-index 2) last-close-index))))
-                        "\n[;")}
-            nil))))))
+            (binding [*current-rep-loc* (:rep-loc rep-op)]
+              ; @todo no need for we/
+              (eval (read-string (.substring content (+ last-open-index 2) last-close-index))))
+            []))))))
 
 ; @todo: better name?
 (defn do-repl [rep-ops]
-  (for [rep-op rep-ops
-        :let [details (repl-details rep-op)]
-        :when details]
-    (merge (assoc rep-op :action "insert") details)))
-
-
-
-
-
-
-
-
-
+  (mapcat repl-outgoing-ops rep-ops))
