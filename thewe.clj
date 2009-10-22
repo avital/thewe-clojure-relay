@@ -182,11 +182,15 @@
         "type"  "DOCUMENT_INSERT"
         }]))
 
-(defmethod rep-op-to-operations {:loc-type "gadget" :action nil} [gadget-db rep-op]
+(defmethod rep-op-to-operations {:loc-type "gadget" :action nil} [gadget-db- rep-op]
   ; @todo: DON'T HAVE THIS DUPLICATION!!! use some sort of basic-rep-op
   (let [rep-loc (rep-op :rep-loc)]
+    ; @todo: HORRIBLE
+    (swap! gadget-db assoc (dissoc rep-loc :key :type)
+      (assoc (gadget-db- (dissoc rep-loc :key :type)) (:key rep-loc)
+        (.replaceAll (.replaceAll (:content rep-op) "<" "&lt;") ">" "&gt;")))
       [{
-        "index" 1,
+        "index" 0,
         "waveletId" (:wavelet-id rep-loc),
         "blipId" (:blip-id rep-loc),
         "javaClass" "com.google.wave.api.impl.OperationImpl",
@@ -194,9 +198,10 @@
                     "javaClass" "com.google.wave.api.Gadget",
                     "properties" {
                                   "map" (assoc 
-                                          (gadget-db (dissoc rep-loc :key :type))
+                                          (gadget-db- (dissoc rep-loc :key :type))
                                           (:key rep-loc)
-                                          (:content rep-op))
+                                        ; @todo (url encoding?!)
+                                          (.replaceAll (.replaceAll (:content rep-op) "<" "&lt;") ">" "&gt;"))
                                   "javaClass" "java.util.HashMap"
                                   },
                     "type" "GADGET"
@@ -293,21 +298,28 @@
 (def *current-rep-loc*)
 
 (defn view-dev []
-  (swap! rep-rules conj #{(assoc *current-rep-loc* :type "gadget" :key "_view")
-                          (dissoc (assoc *current-rep-loc* :subcontent "js") :blip-id)})
+  (swap! rep-rules conj 
+    #{(assoc *current-rep-loc* :type "gadget" :key "_view.js")
+      (dissoc (assoc *current-rep-loc* :subcontent "// js") :blip-id)}
+    #{(assoc *current-rep-loc* :type "gadget" :key "_view.html")
+      (dissoc (assoc *current-rep-loc* :subcontent "<!-- html -->") :blip-id)}
+    #{(assoc *current-rep-loc* :type "gadget" :key "_view.css")
+      (dissoc (assoc *current-rep-loc* :subcontent "/* css */") :blip-id)})
 
   [
    {:rep-loc *current-rep-loc* :action "delete"}
    {:rep-loc *current-rep-loc* :action "append-gadget" :state 
      {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
-      "_view" "alert(2)"
-      "author" "avital@wavesandbox.com"}}
+      "author" "avital@wavesandbox.com"
+      "_view.js" ""
+      "_view.html" ""
+      "_view.css" ""}}
    {:rep-loc *current-rep-loc* :action "create-child-blip" :child-blip-id "html"}
    {:rep-loc (assoc *current-rep-loc* :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
    {:rep-loc (assoc *current-rep-loc* :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
    {:rep-loc (assoc *current-rep-loc* :blip-id "html") :content "<!-- html -->"}
-   {:rep-loc (assoc *current-rep-loc* :blip-id "css") :content "// css"}
-   {:rep-loc (assoc *current-rep-loc* :blip-id "js") :content "js"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "css") :content "/* css */"}
+   {:rep-loc (assoc *current-rep-loc* :blip-id "js") :content "// js"}
   ]
 )
 
