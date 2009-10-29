@@ -8,7 +8,7 @@
 (defn aveg [v] (/ (reduce + v) (count v)))
 
 ; Logged form with monads (manually written)
-(defn aveg-with-logging [v]
+(defn aveg-with-logging-1 [v]
   (domonad (writer-m empty-vector)
     [a1 [(reduce + v) [['(reduce + v) (reduce + v)]]]
      a2 [(/ a1 (count v)) [['(/ (reduce + v) (count v)) (/ a1 (count v))]]]]
@@ -16,7 +16,7 @@
 
 ; Logged form with monads (manually written, no duplication of computation)
 ; Runs faster when computations done are relatively expensive
-(defn aveg-with-logging-faster [v]
+(defn aveg-with-logging-2 [v]
   (domonad (writer-m empty-vector)
     [:let [a1 (reduce + v)]
      a1-log [nil [['(reduce + v) a1]]]
@@ -35,12 +35,30 @@
 
 
 
+; cheap computation time comparison (aveg-with-logging-1 is faster)
+
+
+(many-times (aveg (range 10 20)))
+; "Elapsed time: 80.004559 msecs"
+
+(many-times (aveg-with-logging-1 (range 10 20)))
+; "Elapsed time: 580.033055 msecs"
+
+(many-times (aveg-with-logging-2 (range 10 20)))
+; "Elapsed time: 760.043312 msecs"
+
+
+
+; Expensive computation time comparison (aveg-with-logging-2 is faster)
+
 (many-times (aveg (range 10 1000)))
-; "Elapsed time: 128.007295 msecs"
+; "Elapsed time: 3204.182596 msecs"
 
-(many-times (aveg-with-logging (range 10 1000)))
-; "Elapsed time: 10500.598395 msecs"
+(many-times (aveg-with-logging-1 (range 10 1000)))
+; "Elapsed time: 7228.411924 msecs"
 
-(many-times (aveg-with-logging-faster (range 10 1000)))
-; "Elapsed time: 3508.199921 msecs"
+(many-times (aveg-with-logging-2 (range 10 1000)))
+; "Elapsed time: 4124.235027 msecs"
+
+
 
