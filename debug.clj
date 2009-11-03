@@ -46,7 +46,10 @@
       `(binding [*log-path* (log-conj *log-path* '~what)]
          (log* (~(first what) ~(vec (apply concat
                                  (for [[name val] (partition 2 (second what))]
-                                   `(~name (log ~val))))) (log ~(nth what 2)))))
+                                   `(~name ~(if (= name :let)
+                                             val
+                                             `(log ~val))))))
+                                 (log ~(nth what 2)))))
 
       (or (macro? what) (special-symbol? (first what)))
       `(binding [*log-path* (log-conj *log-path* '~what)]
@@ -84,7 +87,7 @@
   (reset! *log-counter* 0)
 ;  (macroexpand-1 '(log (for [x [[1 2] [3 4 5]] y x :when (even? y) z (range 1 y)] z)))
 
-  (log (for [x [[1 2] [3 4 5]] y x :when (even? y) z (range 1 y)] z))
+  (log (for [x [1 2] :let [y (inc x)]] (+ x y)))
 ;  (log (* (inc 1) (inc 2)))
   (println (json-str @call-log))
 
