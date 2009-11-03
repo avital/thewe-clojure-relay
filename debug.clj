@@ -8,46 +8,84 @@
 (defmacro attempt [expr]
   `(try ~expr (catch Throwable t# t#)))
 
-(defn log** [path result]
-  (if (instance? Throwable result)
-    (do
-      (swap! call-log assoc-in path (str "Exception" result (.getStackTrace result)))
-      (throw result))
-    (swap! call-log assoc-in path (str result)))
-  result)
+(def *log-path* [])
 
-(defmacro log* [path result]
-  `(log** ~path (attempt ~result)))
+(defn log** [result]
+  (let [log-path (conj *log-path* :result)]
+    (if (instance? Throwable result)
+      (do
+        (swap! call-log assoc-in log-path (str "Exception" result (.getStackTrace result)))
+        (throw result))
+      (swap! call-log assoc-in log-path (str result)))
+    result))
 
-(defmacro log [& path]
-  (let [what (last path)]
-    (if (seq? what)
-      (cond
-        (= (first what) 'do)
-        `(do ~@(for [clause (rest what)] `(log ~clause)))
+(defmacro log* [result]
+  `(log** (attempt ~result)))
 
-        (or (macro? what) (special-symbol? (first what)))
-        `(log* '~path ~what)
-        
-        :else
-        `(log* '~(concat path [:value])
-           ~(for [clause what]
-              `(log ~@path ~clause))))
+(let [x 1 y (inc x)] y)
 
-      (cond
-        (symbol? what)
-        `(log* '~path ~what)
-        
-        :else what))))
+(defmacro log [what]
+  (if (seq? what)
+    (cond
+      (#{'do} (first what))
+      `(log* (~(first what) ~@(for [clause (rest what)] 
+                                `(log ~clause))))
+      
+      (#{'if} (first what))
+      `(binding [*log-path* (conj *log-path* '~what)]
+         (log* (~(first what) ~@(for [clause (rest what)]
+                                  `(log ~clause)))))
+
+      (#{'let} (first what))
+      `(binding [*log-path* (conj *log-path* '~what)]
+         (log* (~(first what) ~(vec (apply concat
+                                 (for [[name val] (partition 2 (second what))]
+                                   `(~name (log ~val))))) (log ~(nth what 2)))))
+
+      (or (macro? what) (special-symbol? (first what)))
+      `(binding [*log-path* (conj *log-path* '~what)]
+         (log* ~what))
+
+      :else
+      `(binding [*log-path* (conj *log-path* '~what)]
+         (log* ~(for [clause what]
+                  `(log ~clause)))))
+
+    (cond
+      (symbol? what)
+      `(binding [*log-path* (conj *log-path* '~what)]
+         (log* ~what))
+
+      :else what)))
 
 (defmacro defn-log [name args & rest]
-  `(defn ~name ~args (log (do ~@rest))))
+  `(defn ~name ~args
+     (binding [*log-path* (conj *log-path* (apply list (concat '(~name) ~args)))]
+       (log (do ~@rest)))))
 
 
 
 
 ; tests
 (comment
+
+  (defn-log fact [n]
+    (if (zero? n)
+      1
+      (* n (fact (dec n)))))
+
+  (reset! call-log {})
+  (fact 4)
+  (println (json-str @call-log))
+
+  (log (if (zero? 2) (inc x) (inc y)))
+
+  (log x)
+
+(macroexpand-1 '(l)
+
+(log (aveg 2 3))
+
 
 (macroexpand-1 '(log (+ 2 2)))
 

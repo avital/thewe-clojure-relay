@@ -62,3 +62,24 @@
 
 
 
+
+((domonad (state-t (writer-m empty-vector))
+  [a (m-result 3)
+   _ (set-val 0 0)
+   b (m-result 4)
+   _ (set-val 1 2)
+   c (m-result (+ a b))] c) {})
+
+((domonad state-m
+  [a (m-result 3)
+   _ (set-val 0 0)
+   b (m-result 4)
+   _ (set-val 1 2)
+   c (m-result (+ a b))] c) {"a" 2})
+
+(domonad (writer-m empty-vector)
+  [a (m-result 3)
+   _ (write "hello")
+   b (m-result 4)
+   _ (write "hi")
+   c (m-result (+ a b))] c)
