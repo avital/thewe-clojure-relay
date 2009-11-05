@@ -5,7 +5,7 @@
   (swap! db into
     (for [rep-op rep-ops] [(:rep-loc rep-op) (:content rep-op)])))
 
-(defn answer-wave [events-map]
+(defn-log answer-wave [events-map]
   (json-str
     (rep-ops-to-outgoing-map
       ((ns-resolve 'we
@@ -13,6 +13,8 @@
            (events-map "proxyingFor"))) events-map))))
 
 (defroutes server
+  (GET "/log"
+    (json-str @*call-log*))
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
 
@@ -31,17 +33,17 @@
  ~for-args )))
 
 
-(defn identify-this-blip [rep-op rep-loc gadget-state] 
+(defn-log identify-this-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
       :action nil
       :loc-type "blip"
       :content (str rep-loc))])
 
-(defn identify-blip [events-map]
+(defn-log identify-blip [events-map]
   (apply concat 
 	(iterate-events events-map "WAVELET_SELF_ADDED" (identify-this-blip rep-op rep-loc gadget-state))))
 
-(defn create-child-blip [rep-op rep-loc gadget-state] 
+(defn-log create-child-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
       :action "create-child-blip"
       :loc-type "blip"
@@ -77,7 +79,7 @@
    {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
    {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])
 
-(defn view-dev [events-map]
+(defn-log view-dev [events-map]
   (apply concat
 	 (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state))))
 
@@ -88,7 +90,7 @@
         (concat
           (do-replication @rep-rules rep-ops))))
 
-(defn view-dev-and-do-replication [events-map] 
+(defn-log view-dev-and-do-replication [events-map] 
   (concat (view-dev events-map) (do-replication-by-json events-map) ))
 
 

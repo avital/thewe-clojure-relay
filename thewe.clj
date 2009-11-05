@@ -7,7 +7,6 @@
  (:use clojure.set)
  (:use clojure.contrib.pprint))
 
-
 ; =====================
 ; ======= Atoms =======
 ; =====================
@@ -23,15 +22,9 @@
 (defn dig [map & rest]
   (get-in map rest))
 
-
 (def log-list (atom []))
 
-(defn log [x y]
-  (println x y)
-  (swap! log-list conj [x y])
-  y)
-
-(defn filter-keys [map keys]
+(defn-log filter-keys [map keys]
   (into {} (filter #(some #{(key %)} keys) map)))
 
 
@@ -53,16 +46,16 @@
 
 ; @todo: can this be better?
 ; checks whether the rep-op satisfies the rep-loc definition
-(defn match-rep-loc [rep-op rep-loc]
-  (if (log "blip-id reploc" (:blip-id rep-loc))
+(defn-log match-rep-loc [rep-op rep-loc]
+  (if (:blip-id rep-loc)
     (= (:rep-loc rep-op) rep-loc)
     (and
-      (= (log "d1" (dissoc (:rep-loc rep-op) :blip-id)) (log "d2" (dissoc rep-loc :blip-id :subcontent)))
-      (log "contains" (.contains (log "content" (:content rep-op)) (log "subcontent" (:subcontent rep-loc)))))))
+     (= (dissoc (:rep-loc rep-op) :blip-id) (log "d2" (dissoc rep-loc :blip-id :subcontent)))
+     (.contains (log "content" (:content rep-op)) (:subcontent rep-loc)))))
 
 
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
-(defn do-replication [rep-rules rep-ops]
+(defn-log do-replication [rep-rules rep-ops]
   (for [rep-op rep-ops
         rep-class rep-rules :when (some (partial match-rep-loc rep-op) rep-class)
         rep-loc rep-class :when (not= rep-loc (:rep-loc rep-op))]
@@ -84,7 +77,7 @@
 ;
 ; blip-data:          (dig incoming-wave-map "blips" "map" blip-id)
 
-(defn blip-data-to-rep-ops [blip-data]
+(defn-log blip-data-to-rep-ops [blip-data]
   (let [basic-rep-loc {:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id (blip-data "blipId")}]
     (if-let [gadget-map (first (dig blip-data "elements" "map"))]
       ; there is a gadget here
@@ -99,7 +92,7 @@
   )
 
 
-(defn incoming-map-to-rep-ops [incoming]
+(defn-log incoming-map-to-rep-ops [incoming]
   (let [modified-blip-ids
         (for [event (dig incoming "events" "list")
               :when (not (.endsWith (event "modifiedBy") "@a.gwave.com"))
@@ -258,7 +251,7 @@
   "type" "BLIP_CREATE_CHILD"}]))
 
 
-(defn wrap-json-operations-with-bundle [list]
+(defn-log wrap-json-operations-with-bundle [list]
   {
    "javaClass"  "com.google.wave.api.impl.OperationMessageBundle",
    "operations"  {
@@ -268,7 +261,7 @@
    "version"  "103"   ; @todo WTF
    })
 
-(defn rep-ops-to-outgoing-map [rep-ops]
+(defn-log rep-ops-to-outgoing-map [rep-ops]
    (wrap-json-operations-with-bundle (mapcat rep-op-to-operations rep-ops)))
 
 
@@ -276,7 +269,7 @@
 ; ======= rep-rules utilities =======
 ; ===================================
 
-(defn rep-by-text! [text]
+(defn-log rep-by-text! [text]
   (let [rep-class (into #{}
                     (for [[rep-loc content] @db
                           :when (.contains content text)] rep-loc))]
