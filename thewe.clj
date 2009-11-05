@@ -15,7 +15,6 @@
 (def db (atom {}))
 (def rep-rules (atom #{}))
 
-
 ; =========================
 ; ======= Utilities =======
 ; =========================
@@ -273,9 +272,6 @@
    (wrap-json-operations-with-bundle (mapcat rep-op-to-operations rep-ops)))
 
 
-
-
-
 ; ===================================
 ; ======= rep-rules utilities =======
 ; ===================================
@@ -286,32 +282,3 @@
                           :when (.contains content text)] rep-loc))]
     (swap! rep-rules conj rep-class)
     rep-class))
-
-
-
-; @todo: WHY CAN'T WE REP A GADGET STATE KEY WITH QUOTATION MARKS ("")?
-
-
-; ====================
-; ======= REPL =======
-; ====================
-
-
-(defn repl-outgoing-ops [rep-op]
-  (let [content (:content rep-op) last-open-index (.lastIndexOf content "[;")]
-    (if (= last-open-index -1)
-      []
-      (let [last-close-index (.indexOf content ";]" last-open-index)]
-        (if (= last-close-index -1)
-          []
-          (if (or
-                (<= (.length content) (+ last-close-index 2))
-                (not= (.charAt content (+ last-close-index 2)) \*))
-            (binding [*current-rep-loc* (:rep-loc rep-op)]
-              ; @todo no need for we/
-              (eval (read-string (.substring content (+ last-open-index 2) last-close-index))))
-            []))))))
-
-; @todo: better name?
-(defn do-repl [rep-ops]
-  (mapcat repl-outgoing-ops rep-ops))
