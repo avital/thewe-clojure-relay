@@ -13,7 +13,9 @@
            (events-map "proxyingFor"))) events-map))))
 
 (defroutes server
-  (GET "/log"
+  (GET "/clean-log"
+    (reset! *call-log* {}))
+  (GET "/log" 
     (json-str @*call-log*))
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
