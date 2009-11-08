@@ -5,12 +5,12 @@
   (swap! db into
     (for [rep-op rep-ops] [(:rep-loc rep-op) (:content rep-op)])))
 
-(defn answer-wave [events-map]
+(defn-log answer-wave [events-map]
   (json-str
     (rep-ops-to-outgoing-map
       ((ns-resolve 'we
          (read-string
-           (events-map "proxyingFor"))) events-map))))
+           ((read-json (events-map "proxyingFor")) "action"))) events-map))))
 
 (def js-snippet 
 
@@ -35,6 +35,10 @@ viewsByMode[newMode].setStyle('display', 'inline')
 }")
 
 (defroutes server
+  (GET "/clean-log"
+    (reset! *call-log* {}))
+  (GET "/log" 
+    (json-str @*call-log*))
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
 
@@ -59,7 +63,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] ~for-args )))
 
 
-(defn identify-this-blip [rep-op rep-loc gadget-state] 
+(defn-log identify-this-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
      :action "delete-range"
      :loc-type "blip")
@@ -68,11 +72,11 @@ viewsByMode[newMode].setStyle('display', 'inline')
       :loc-type "blip"
       :content (str rep-loc))])
 
-(defn identify-blip [events-map]
+(defn-log identify-blip [events-map]
   (apply concat 
 	(iterate-events events-map "WAVELET_SELF_ADDED" (identify-this-blip rep-op rep-loc gadget-state))))
 
-(defn create-child-blip [rep-op rep-loc gadget-state] 
+(defn-log create-child-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
      :action "delete-range"
      :loc-type "blip")
@@ -135,7 +139,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
    {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
    {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])
 
-(defn view-dev [events-map]
+(defn-log view-dev [events-map]
   (apply concat
 	 (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state))))
 
@@ -146,9 +150,5 @@ viewsByMode[newMode].setStyle('display', 'inline')
         (concat
           (do-replication @rep-rules rep-ops))))
 
-(defn view-dev-and-do-replication [events-map] 
+(defn-log view-dev-and-do-replication [events-map] 
   (concat (view-dev events-map) (do-replication-by-json events-map) ))
-
-
-(run-server {:port 31337}
-  "/*" (servlet server))

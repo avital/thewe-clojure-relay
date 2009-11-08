@@ -100,9 +100,34 @@ public abstract class AbstractRobotServlet extends HttpServlet implements
 		String events = getRequestBody(req);
 		log("Events: " + events);
 		
+		JSONSerializer serializer = getJSONSerializer();
+		EventMessageBundle eventsBundle = null;
+		String proxyingFor = "";
+		
+		try {
+			JSONObject jsonObject = new JSONObject(events);
+			proxyingFor = jsonObject.getString("proxyingFor");
+		} catch (JSONException jsonx) {
+			jsonx.printStackTrace();
+		}
+		
+		log(proxyingFor);
+		
+		String port = "";
+		try {
+			port = new JSONObject(proxyingFor).getString("port");
+		} catch (JSONException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		
 		String data = "events=" + URLEncoder.encode(events, "UTF-8");
 		// Send the request
-		URL url = new URL("http://jem.thewe.net:1337/wave");
+		
+		log("port = " + port);
+		
+		URL url = new URL("http://jem.thewe.net/" + port + "/wave");
 		URLConnection conn = url.openConnection();
 		conn.setDoOutput(true);
 		OutputStreamWriter writer = new OutputStreamWriter(conn
