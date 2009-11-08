@@ -35,10 +35,15 @@ viewsByMode[newMode].setStyle('display', 'inline')
 }")
 
 (defroutes server
-  (GET "/clean-log"
-    (reset! *call-log* {}))
-  (GET "/log" 
-    (json-str @*call-log*))
+  (GET "/log/start"
+    (reset! *call-log* {})
+    (def *enable-logging* true)
+    "Hi")
+  (GET "/log/stop" 
+    [{:headers {"Content-Type" "text/plain"}}
+     (do
+       (def *enable-logging* false)
+       (json-str @*call-log*))])
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
 
@@ -57,7 +62,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
 		       :when (= (~'annotation "name") "we/eval")
  		       :when (not= -1 (dig ~'annotation "range" "start"))]
 		   [(dig ~'annotation "range" "start") (dig ~'annotation "range" "end")])
-		 ~'rep-loc (assoc {:type "blip"} :annotate ~'annotated-range  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId"))
+		 ~'rep-loc (assoc {:type "blip"} :annotate ~'annotated-range :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId"))
 		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content}		 
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] ~for-args )))

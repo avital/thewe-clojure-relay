@@ -24,7 +24,7 @@
 
 (def log-list (atom []))
 
-(defn-log filter-keys [map keys]
+(defn filter-keys [map keys]
   (into {} (filter #(some #{(key %)} keys) map)))
 
 
