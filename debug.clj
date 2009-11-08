@@ -70,8 +70,8 @@
 	  `(binding [*log-path* (log-conj *log-path* '~what)]
 	     (log* ~what))
 	  
-	  :else what)
-	~what)))
+	  :else what))
+     ~what))
   
 (defmacro defn-log [name args & rest]
   `(defn ~name ~args

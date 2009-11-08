@@ -10,7 +10,7 @@
     (rep-ops-to-outgoing-map
       ((ns-resolve 'we
          (read-string
-           (events-map "proxyingFor"))) events-map))))
+           ((read-json (events-map "proxyingFor")) "action"))) events-map))))
 
 (defroutes server
   (GET "/clean-log"

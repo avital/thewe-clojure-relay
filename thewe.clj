@@ -50,8 +50,8 @@
   (if (:blip-id rep-loc)
     (= (:rep-loc rep-op) rep-loc)
     (and
-     (= (dissoc (:rep-loc rep-op) :blip-id) (log "d2" (dissoc rep-loc :blip-id :subcontent)))
-     (.contains (log "content" (:content rep-op)) (:subcontent rep-loc)))))
+     (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
+     (.contains (:content rep-op) (:subcontent rep-loc)))))
 
 
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
@@ -269,7 +269,7 @@
 ; ======= rep-rules utilities =======
 ; ===================================
 
-(defn-log rep-by-text! [text]
+(defn rep-by-text! [text]
   (let [rep-class (into #{}
                     (for [[rep-loc content] @db
                           :when (.contains content text)] rep-loc))]
