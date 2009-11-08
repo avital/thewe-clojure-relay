@@ -38,18 +38,14 @@
 	    `(log* (~(first what) ~@(for [clause (rest what)] 
 				      `(log ~clause))))
 	    
-	    (#{'if} func)
+	    (#{'if 'and 'or} func)
 	    `(binding [*log-path* (log-conj *log-path* '~what)]
 	       (log* (~(first what) ~@(for [clause (rest what)]
 					`(log ~clause)))))
 	    
 	    (#{'let 'for 'clojure.core/let 'clojure.core/for} func)
 	    `(binding [*log-path* (log-conj *log-path* '~what)]
-	       (log* (~(first what) ~(vec (apply concat
-						 (for [[name val] (partition 2 (second what))]
-						   `(~name ~(if (= name :let)
-							      val
-							      `(log ~val))))))
+	       (log* (~(first what) ~(second what)
 		      (log ~(nth what 2)))))
 	    
 	    (#{'iterate-events} func)
