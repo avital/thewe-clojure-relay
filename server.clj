@@ -126,11 +126,11 @@ viewsByMode[newMode].setStyle('display', 'inline')
 (defn view-dev-this-blip [rep-op rep-loc gadget-state]
   (swap! rep-rules conj
     #{(assoc rep-loc :type "gadget" :key "_view.js")
-      (filter-keys (assoc rep-loc :subcontent "// js") :blip-id)}
+      (dissoc (assoc rep-loc :subcontent "// js") :blip-id)}
     #{(assoc rep-loc :type "gadget" :key "_view.html")
-      (filter-keys (assoc rep-loc :subcontent "<!-- html -->") :blip-id)}
+      (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id)}
     #{(assoc rep-loc :type "gadget" :key "_view.css")
-      (filter-keys (assoc rep-loc :subcontent "/* css */") :blip-id)})
+      (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)})
 
   [{:rep-loc rep-loc :action "delete"}
    {:rep-loc rep-loc :action "append-gadget" :state
