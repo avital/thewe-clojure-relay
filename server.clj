@@ -94,7 +94,3 @@
 
 (defn-log view-dev-and-do-replication [events-map] 
   (concat (view-dev events-map) (do-replication-by-json events-map) ))
-
-
-(run-server {:port 31337}
-  "/*" (servlet server))
