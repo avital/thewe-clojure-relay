@@ -62,8 +62,10 @@ viewsByMode[newMode].setStyle('display', 'inline')
 		       :when (= (~'annotation "name") "we/eval")
  		       :when (not= -1 (dig ~'annotation "range" "start"))]
 		   [(dig ~'annotation "range" "start") (dig ~'annotation "range" "end")])
-		 ~'rep-loc (assoc {:type "blip"} :annotate ~'annotated-range :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId"))
-		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content}		 
+
+		 ~'rep-loc {:type "blip"  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId")}
+		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content  :annotate ~'annotated-range}		 
+
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] ~for-args )))
 
@@ -114,7 +116,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
 
 (defn run-function-do-operations [events-map]
   (apply concat  
-	 (iterate-events events-map "BLIP_SUBMITTED"     
+	 (iterate-events events-map "DOCUMENT_CHANGED"     
 			 (apply concat (for [[start end] annotated-range] 
 					 (if-let [func-to-run (ns-resolve 'we
 									  (read-string  (subs (:content rep-op) start end)))]  
@@ -157,3 +159,4 @@ viewsByMode[newMode].setStyle('display', 'inline')
 
 (defn-log view-dev-and-do-replication [events-map] 
   (concat (view-dev events-map) (do-replication-by-json events-map) ))
+
