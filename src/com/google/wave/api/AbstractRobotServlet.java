@@ -102,7 +102,7 @@ public abstract class AbstractRobotServlet extends HttpServlet implements
 		
 		String data = "events=" + URLEncoder.encode(events, "UTF-8");
 		// Send the request
-		URL url = new URL("http://jem.thewe.net/wave");
+		URL url = new URL("http://jem.thewe.net:1337/wave");
 		URLConnection conn = url.openConnection();
 		conn.setDoOutput(true);
 		OutputStreamWriter writer = new OutputStreamWriter(conn

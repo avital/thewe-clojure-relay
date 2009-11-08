@@ -134,17 +134,14 @@
         wavelet-id (:wavelet-id rep-loc)
         blip-id (:blip-id rep-loc) ]
     (if blip-id
-      [{
-        "index"  -1,
+      [{"index"  -1,
         "waveletId"  wavelet-id,
         "blipId"  blip-id,
         "javaClass"  "com.google.wave.api.impl.OperationImpl",
         "property"  nil,
         "waveId"  wave-id,
-        "type"  "DOCUMENT_DELETE"
-        }
-       {
-        "index"  0,
+        "type"  "DOCUMENT_DELETE"}
+       {"index"  0,
         "waveletId"  wavelet-id,
         "blipId"  blip-id,
         "javaClass"  "com.google.wave.api.impl.OperationImpl",
@@ -159,76 +156,83 @@
         wave-id (:wave-id rep-loc)
         wavelet-id (:wavelet-id rep-loc)
         blip-id (:blip-id rep-loc) ]
-      [{
-        "index"  -1,
+      [{"index"  -1,
         "waveletId"  wavelet-id,
         "blipId"  blip-id,
         "javaClass"  "com.google.wave.api.impl.OperationImpl",
         "property"  nil,
         "waveId"  wave-id,
-        "type"  "DOCUMENT_DELETE"
-        }]))
+        "type"  "DOCUMENT_DELETE"}]))
+
+(defmethod rep-op-to-operations {:loc-type "blip" :action "delete-range"} [rep-op]
+  (let [rep-loc (rep-op :rep-loc)
+        wave-id (:wave-id rep-loc)
+        wavelet-id (:wavelet-id rep-loc)
+        blip-id (:blip-id rep-loc)]
+    `[~@(for [[start end] (:annotate rep-loc)] 
+	  {"index" -1,
+	   "waveletId" wavelet-id,
+	   "blipId" blip-id,
+	   "javaClass" "com.google.wave.api.impl.OperationImpl",
+	   "property" {"javaClass" "com.google.walkabout.api.Range", "end" end, "start" start},
+	   "waveId" wave-id,
+	   "type" "DOCUMENT_DELETE"})]))
 
 
 ; @todo: what is the difference between using "append" and :append?
 
 (defmethod rep-op-to-operations {:loc-type "blip" :action "insert"} [rep-op]
   (let [rep-loc (rep-op :rep-loc)]
-      [{
-        "index"  (:index rep-op),
-        "waveletId"  (:wavelet-id rep-loc),
-        "blipId"  (:blip-id rep-loc),
-        "javaClass"  "com.google.wave.api.impl.OperationImpl",
-        "property"  (:content rep-op),
-        "waveId"  (:wave-id rep-loc),
-        "type"  "DOCUMENT_INSERT"
-        }]))
+    [{"index"  (:index rep-op),
+      "waveletId"  (:wavelet-id rep-loc),
+      "blipId"  (:blip-id rep-loc),
+      "javaClass"  "com.google.wave.api.impl.OperationImpl",
+      "property"  (:content rep-op),
+      "waveId"  (:wave-id rep-loc),
+      "type"  "DOCUMENT_INSERT"
+      }]))
+
+(defmethod rep-op-to-operations {:loc-type "blip" :action "insert-multi"} [rep-op]
+  (let [rep-loc (rep-op :rep-loc)]
+    `[~@(for [[start end] (:annotate rep-loc)] 
+	  {"index"  start,
+	   "waveletId"  (:wavelet-id rep-loc),
+	   "blipId"  (:blip-id rep-loc),
+	   "javaClass"  "com.google.wave.api.impl.OperationImpl",
+	   "property"  (:content rep-op),
+	   "waveId"  (:wave-id rep-loc),
+	   "type"  "DOCUMENT_INSERT"})]))
 
 (defmethod rep-op-to-operations {:loc-type "blip" :action "append-gadget"} [rep-op]
   ; @todo: DON'T HAVE THIS DUPLICATION!!! use some sort of basic-rep-op
   (let [rep-loc (rep-op :rep-loc)]
     ; @todo: HORRIBLE
-      [{
-        "index" 0,
-        "waveletId" (:wavelet-id rep-loc),
-        "blipId" (:blip-id rep-loc),
-        "javaClass" "com.google.wave.api.impl.OperationImpl",
-        "property" {
-                    "javaClass" "com.google.wave.api.Gadget",
-                    "properties" {
-                                  "map" (:state rep-op)
-                                  "javaClass" "java.util.HashMap"
-                                  },
-                    "type" "GADGET"
-                    },
-        "waveId" (:wave-id rep-loc),
-        "type" "DOCUMENT_ELEMENT_APPEND"
-        }]))
+    [{"index" 0,
+      "waveletId" (:wavelet-id rep-loc),
+      "blipId" (:blip-id rep-loc),
+      "javaClass" "com.google.wave.api.impl.OperationImpl",
+      "property" {"javaClass" "com.google.wave.api.Gadget",
+		  "properties" {"map" (:state rep-op)
+				"javaClass" "java.util.HashMap"},
+		  "type" "GADGET"},
+      "waveId" (:wave-id rep-loc),
+      "type" "DOCUMENT_ELEMENT_APPEND"
+      }]))
 
 (defmethod rep-op-to-operations {:loc-type "gadget" :action nil} [rep-op]
   (let [rep-loc (rep-op :rep-loc)]
-  [{
-    "blipId" (:blip-id rep-loc),
-    "index" -1,
-    "waveletId" (:wavelet-id rep-loc),
-    "javaClass" "com.google.wave.api.impl.OperationImpl",
-    "waveId" (:wave-id rep-loc),
-    "property" {
-                "type" "GADGET",
-                "properties" {
-                              "javaClass" "java.util.HashMap",
-                              "map" {
-                                     (:key rep-loc)
-                                     (:content rep-op)
-                                     
-                                     "url"
-                                     "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"
-                                     }
-                              },
-                "java_class" "com.google.wave.api.Gadget"
-                },
-    "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"
-    }]))
+    [{"blipId" (:blip-id rep-loc),
+      "index" -1,
+      "waveletId" (:wavelet-id rep-loc),
+      "javaClass" "com.google.wave.api.impl.OperationImpl",
+      "waveId" (:wave-id rep-loc),
+      "property" 
+      {"type" "GADGET",
+       "properties" {"javaClass" "java.util.HashMap",
+		     "map" {(:key rep-loc) (:content rep-op)
+			    "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}},
+       "java_class" "com.google.wave.api.Gadget"},
+      "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"}]))
 
 
 (defmethod rep-op-to-operations {:loc-type "blip" :action "create-child-blip"} [rep-op]
@@ -265,7 +269,7 @@
                   "javaClass"  "java.util.ArrayList",
                   "list"  list
                   }
-   "version"  "103"   ; @todo WTF
+   "version"  "104"   ; @todo WTF
    })
 
 (defn rep-ops-to-outgoing-map [rep-ops]

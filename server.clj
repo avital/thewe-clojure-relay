@@ -12,6 +12,28 @@
          (read-string
            (events-map "proxyingFor"))) events-map))))
 
+(def js-snippet 
+
+"modeChanged = function(lastMode, newMode) {
+
+if (lastMode == wave.Mode.EDIT) {
+we.state.set('value', $('edit').get('value'));
+}
+
+// Here are the numeric values of the different modes: {UNKNOWN:0, VIEW:1, EDIT:2, DIFF_ON_OPEN:3, PLAYBACK:4};
+// An array that associates for each mode the element that should be displayed
+var viewsByMode = [$('view'), $('view'), $('edit'), $('view'), $('view')]
+
+viewsByMode.each(function(el) {
+
+el.setStyle('display', 'none')
+
+})
+
+viewsByMode[newMode].setStyle('display', 'inline')
+
+}")
+
 (defroutes server
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
@@ -24,16 +46,25 @@
 	   (dig ~'event "properties" "map" "blipId"))]
      (for [~'blip-id ~'modified-blip-ids
 	   :let [~'blip-data (dig ~events "blips" "map" ~'blip-id)
-		 ~'rep-loc (assoc {:type "blip"} :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId"))
-		 ~'rep-op {:rep-loc ~'rep-loc :content (~'blip-data "content")}
+		 ~'content (~'blip-data "content")		 
+		 ~'blip-annotations (dig ~'blip-data "annotations" "list")		 
+		 ~'annotated-range
+		 (for [~'annotation ~'blip-annotations 
+		       :when (= (~'annotation "name") "we/eval")
+ 		       :when (not= -1 (dig ~'annotation "range" "start"))]
+		   [(dig ~'annotation "range" "start") (dig ~'annotation "range" "end")])
+		 ~'rep-loc (assoc {:type "blip"} :annotate ~'annotated-range  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId"))
+		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content}		 
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
-		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]]
- ~for-args )))
+		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] ~for-args )))
 
 
 (defn identify-this-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
-      :action nil
+     :action "delete-range"
+     :loc-type "blip")
+   (assoc rep-op
+      :action "insert-multi"
       :loc-type "blip"
       :content (str rep-loc))])
 
@@ -43,17 +74,44 @@
 
 (defn create-child-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
+     :action "delete-range"
+     :loc-type "blip")
+   (assoc rep-op
       :action "create-child-blip"
       :loc-type "blip"
       :child-blip-id "new-blip-id"
       :content (str "hi!"))])
 
-(defn run-function-do-operations [events-map]
-  (apply concat (iterate-events events-map "BLIP_SUBMITTED" (if-let [func-name (:content rep-op)]
-		  ((ns-resolve 'we
-			       (read-string func-name)) rep-op rep-loc nil)))))
+(defn burp-html [rep-op rep-loc gadget-state]
+  [(assoc rep-op
+     :action "delete-range"
+     :loc-type "blip")
+   (assoc rep-op
+     :action "insert-multi"
+     :loc-type "blip"
+     :content "<span wecursor='value'>
+<span id='view' wethis=1></span>
+<input id='edit' wethis=1></input>
+</span>")])
 
-;this has swap! here -  is there a way to prevent it?
+(defn burp-js [rep-op rep-loc gadget-state]
+  [(assoc rep-op
+     :action "delete-range"
+     :loc-type "blip")
+   (assoc rep-op
+     :action "insert-multi"
+     :loc-type "blip"
+     :content js-snippet)])
+
+(defn run-function-do-operations [events-map]
+  (apply concat  
+	 (iterate-events events-map "DOCUMENT_CHANGED"     
+			 (apply concat (for [[start end] annotated-range] 
+					 (if-let [func-to-run (ns-resolve 'we
+									  (read-string  (subs (:content rep-op) start end)))]  
+					   (func-to-run rep-op rep-loc nil) )) ))))
+
+; @TODO this has swap! here -  is there a way to prevent it?
 (defn view-dev-this-blip [rep-op rep-loc gadget-state]
   (swap! rep-rules conj
     #{(assoc rep-loc :type "gadget" :key "_view.js")
