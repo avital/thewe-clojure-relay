@@ -24,7 +24,7 @@
 
 (def log-list (atom []))
 
-(defn-log filter-keys [map keys]
+(defn filter-keys [map keys]
   (into {} (filter #(some #{(key %)} keys) map)))
 
 
@@ -162,7 +162,7 @@
         wave-id (:wave-id rep-loc)
         wavelet-id (:wavelet-id rep-loc)
         blip-id (:blip-id rep-loc)]
-    `[~@(for [[start end] (:annotate rep-loc)] 
+    `[~@(for [[start end] (:annotate rep-op)] 
 	  {"index" -1,
 	   "waveletId" wavelet-id,
 	   "blipId" blip-id,
@@ -187,7 +187,7 @@
 
 (defmethod rep-op-to-operations {:loc-type "blip" :action "insert-multi"} [rep-op]
   (let [rep-loc (rep-op :rep-loc)]
-    `[~@(for [[start end] (:annotate rep-loc)] 
+    `[~@(for [[start end] (:annotate rep-op)] 
 	  {"index"  start,
 	   "waveletId"  (:wavelet-id rep-loc),
 	   "blipId"  (:blip-id rep-loc),
@@ -262,7 +262,7 @@
                   "javaClass"  "java.util.ArrayList",
                   "list"  list
                   }
-   "version"  "105"   ; @todo WTF
+   "version"  "106"   ; @todo WTF
    })
 
 (defn-log rep-ops-to-outgoing-map [rep-ops]
