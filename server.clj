@@ -109,7 +109,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
 
 (defn run-function-do-operations [events-map]
   (apply concat  
-	 (iterate-events events-map "DOCUMENT_CHANGED"     
+	 (iterate-events events-map "BLIP_SUBMITTED"     
 			 (apply concat (for [[start end] annotated-range] 
 					 (if-let [func-to-run (ns-resolve 'we
 									  (read-string  (subs (:content rep-op) start end)))]  

@@ -262,7 +262,7 @@
                   "javaClass"  "java.util.ArrayList",
                   "list"  list
                   }
-   "version"  "104"   ; @todo WTF
+   "version"  "105"   ; @todo WTF
    })
 
 (defn-log rep-ops-to-outgoing-map [rep-ops]
