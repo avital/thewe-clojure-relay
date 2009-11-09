@@ -1,4 +1,5 @@
-(ns we)
+(ns we
+  (:require clojure.contrib.pprint))
 
 (def *call-log* (atom {}))
 
@@ -16,9 +17,9 @@
   (let [log-path (conj *log-path* :result)]
     (if (instance? Throwable result)
       (do
-        (swap! *call-log* assoc-in log-path (str "Exception" result (.getStackTrace result)))
+        (swap! *call-log* assoc-in log-path (str "[Exception] " result))
         (throw result))
-      (swap! *call-log* assoc-in log-path (pr-str result)))
+      (swap! *call-log* assoc-in log-path (with-out-str (pprint result))))
     result))
 
 (defmacro log* [result]
@@ -28,46 +29,48 @@
   (conj pre (str (swap! *log-counter* inc) "/" new)))
 
 (def *enable-logging* false)
+(def *log-monads* false)
 
-(defmacro log [what]
-  `(if *enable-logging*
-     ~(if (seq? what)
-	(let [func (first what)]
-	  (cond
-	    (#{'do} func)
-	    `(log* (~(first what) ~@(for [clause (rest what)] 
-				      `(log ~clause))))
-	    
-	    (#{'if 'and 'or} func)
-	    `(binding [*log-path* (log-conj *log-path* '~what)]
-	       (log* (~(first what) ~@(for [clause (rest what)]
-					`(log ~clause)))))
-	    
-	    (#{'let 'for 'clojure.core/let 'clojure.core/for} func)
-	    `(binding [*log-path* (log-conj *log-path* '~what)]
-	       (log* (~(first what) ~(second what)
-		      (log ~(nth what 2)))))
-	    
-	    (#{'iterate-events} func)
-	    `(binding [*log-path* (log-conj *log-path* '~what)]
-	       (log ~(macroexpand-1 what)))
-	    
-	    (or (macro? what) (special-symbol? func))
-	    `(binding [*log-path* (log-conj *log-path* '~what)]
-	       (log* ~what))
-	    
-	    :else
-	    `(binding [*log-path* (log-conj *log-path* '~what)]
-	       (log* ~(concat `(~(first what)) (for [clause (rest what)]
-						 `(log ~clause)))))))
-	
+(defn third [l]
+  (nth l 2))
+
+(defn internal-log-form [expr]
+  (let [func (first expr)
+	standard-log-form `(~func ~@(for [clause (rest expr)]
+				      `(log ~clause)))]
 	(cond
-	  (symbol? what)
-	  `(binding [*log-path* (log-conj *log-path* '~what)]
-	     (log* ~what))
+	  (#{'do 'if 'and 'or} func)
+	  standard-log-form
+      
+	  (#{'let 'for 'clojure.core/let 'clojure.core/for} func)
+	  `(~func ~(second expr) (log ~(third expr))) 
+      
+	  (or (special-symbol? func)
+	      (macro? expr))
+	  expr
+      
+	  :else
+	  standard-log-form)))
+
+(defmacro log [expr]
+  `(if *enable-logging*
+     (binding [*log-path* (log-conj *log-path* '~expr)]
+	~(if (seq? expr)
+	   (let [func (first expr)]
+	     (cond
+	       (#{'iterate-events} func)
+	       `(log ~(macroexpand-1 expr))
+	    
+	       :else
+	       `(log* ~(internal-log-form expr))))
+	
+	   (cond
+	     (symbol? expr)
+	     `(log* ~expr)
 	  
-	  :else what))
-     ~what))
+	     :else 
+	     expr)))
+     ~expr))
 
 (defn clean-unit-tests! []
   (reset! *unit-tests* {}))
@@ -76,7 +79,7 @@
   `(defn ~name ~args
      (let [result# 
 	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
-	     (log (do ~@rest)))]
+	     (log* ~@(for [expr# rest] `(log ~expr#))))]
        (let [expr# `(~'~name ~@~args)]
 	 (swap! *unit-tests* (fn [ut#]
 			       (if (ut# expr#)
@@ -106,7 +109,7 @@
   (macroexpand-1 '(defn-log f [x y] (+ x y)))
 
   (clean-unit-tests!)
-  (defn-log f [x y] (+ (inc x) (dec y)))
+  (defn-log f [x y] 2 (+ (inc x) (dec y)))
   (f 2 3)
   @*unit-tests*
 
