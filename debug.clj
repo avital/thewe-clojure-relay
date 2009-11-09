@@ -9,9 +9,9 @@
   `(try ~expr (catch Throwable t# t#)))
 
 (def *log-path* [])
-
 (def *log-counter* (atom 0))
-
+(def *unit-tests* (atom {}))
+     
 (defn log** [result]
   (let [log-path (conj *log-path* :result)]
     (if (instance? Throwable result)
@@ -68,11 +68,27 @@
 	  
 	  :else what))
      ~what))
-  
+
+(defn clean-unit-tests! []
+  (reset! *unit-tests* {}))
+
 (defmacro defn-log [name args & rest]
   `(defn ~name ~args
-     (binding [*log-path* (log-conj *log-path* (apply list (concat '(~name) ~args)))]
-       (log (do ~@rest)))))
+     (let [result# 
+	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
+	     (log (do ~@rest)))]
+       (let [expr# `(~'~name ~@~args)]
+	 (swap! *unit-tests* (fn [ut#]
+			       (if (ut# expr#)
+				 ut#
+				 (assoc ut# expr# result#)))))
+       result#)))
+
+(defn run-tests []
+  (for [[test expected] @*unit-tests* 
+	:let [actual (eval test)] 
+	:when (not= actual expected)]
+    `(~test ~actual ~expected)))
 
 
 
@@ -83,6 +99,32 @@
   
 (comment
 
+  (defn-mark f [x y])
+
+  (f 2 3)
+  
+  (macroexpand-1 '(defn-log f [x y] (+ x y)))
+
+  (clean-unit-tests!)
+  (defn-log f [x y] (+ (inc x) (dec y)))
+  (f 2 3)
+  @*unit-tests*
+
+  (eval '(f 2 3))
+  
+  (run-tests)
+
+  (defn f [& args] `(f ~@args))
+
+  (f 2 3)
+  
+  
+  (def x 2)
+  
+  `(a (b ~x))
+
+  '(b x)
+  
   (defmacro iterate-events [x] `(+ ~x ~x))
 
   (macroexpand-1 '(iterate-events (inc 2)))
