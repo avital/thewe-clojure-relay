@@ -1,4 +1,5 @@
-(ns we)
+(ns we
+  (:require clojure.contrib.pprint))
 
 (def *call-log* (atom {}))
 
@@ -16,9 +17,9 @@
   (let [log-path (conj *log-path* :result)]
     (if (instance? Throwable result)
       (do
-        (swap! *call-log* assoc-in log-path (str "Exception" result (.getStackTrace result)))
+        (swap! *call-log* assoc-in log-path (str "[Exception] " result))
         (throw result))
-      (swap! *call-log* assoc-in log-path (pr-str result)))
+      (swap! *call-log* assoc-in log-path (with-out-str (pprint result))))
     result))
 
 (defmacro log* [result]
