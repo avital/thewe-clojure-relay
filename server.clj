@@ -40,10 +40,14 @@ viewsByMode[newMode].setStyle('display', 'inline')
     (def *enable-logging* true)
     "Hi")
   (GET "/log/stop" 
-    [{:headers {"Content-Type" "text/plain"}}
+    [(comment {:headers {"Content-Type" "text/plain"}})
      (do
        (def *enable-logging* false)
-       (json-str @*call-log*))])
+       (str "<html><head></head><body><span id='redirect'>"
+	    (escape-html (json-str @*call-log*))
+	    "</span><script type='text/javascript'>window.location ="
+	    "'http://thewe.net/json-tree#' + document.getElementById('redirect').textContent</script></body></html>")
+)])
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
 
@@ -114,7 +118,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
      :loc-type "blip"
      :content js-snippet)])
 
-(defn run-function-do-operations [events-map]
+(defn-log run-function-do-operations [events-map]
   (apply concat  
 	 (iterate-events events-map "DOCUMENT_CHANGED"     
 			 (apply concat (for [[start end] annotated-range] 
