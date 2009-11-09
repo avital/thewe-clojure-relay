@@ -276,6 +276,7 @@
 (defn rep-by-text! [text]
   (let [rep-class (into #{}
                     (for [[rep-loc content] @db
-                          :when (.contains content text)] rep-loc))]
+                          :when content
+			  :when (.contains content text)] rep-loc))]
     (swap! rep-rules conj rep-class)
     rep-class))
