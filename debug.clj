@@ -75,12 +75,14 @@
 (defn clean-unit-tests! []
   (reset! *unit-tests* {}))
 
+(def *record-unit-tests* false)
+
 (defmacro defn-log [name args & rest]
   `(defn ~name ~args
      (let [result# 
 	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
 	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
-       (if (empty? *log-path*) 
+       (if (and *record-unit-test* (empty? *log-path*))
 	 (let [expr# `(~'~name ~@~args)]
 	   (swap! *unit-tests* assoc expr# result#)))
        result#)))
