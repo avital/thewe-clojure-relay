@@ -1,5 +1,5 @@
 (ns we
-  (:require clojure.contrib.pprint))
+  (:use clojure.contrib.pprint))
 
 (def *call-log* (atom {}))
 
@@ -79,12 +79,10 @@
   `(defn ~name ~args
      (let [result# 
 	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
-	     (log* ~@(for [expr# rest] `(log ~expr#))))]
-       (let [expr# `(~'~name ~@~args)]
-	 (swap! *unit-tests* (fn [ut#]
-			       (if (ut# expr#)
-				 ut#
-				 (assoc ut# expr# result#)))))
+	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
+       (if (empty? *log-path*) 
+	 (let [expr# `(~'~name ~@~args)]
+	   (swap! *unit-tests* assoc expr# result#)))
        result#)))
 
 (defn run-tests []
@@ -110,7 +108,11 @@
 
   (clean-unit-tests!)
   (defn-log f [x y] 2 (+ (inc x) (dec y)))
-  (f 2 3)
+  (defn-log g [x y] (+ (f x y)
+		       (f y x)))
+  
+  (g 2 3)
+  (f 1 1)
   @*unit-tests*
 
   (eval '(f 2 3))

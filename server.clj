@@ -1,16 +1,29 @@
 (ns we
- (:use compojure))
+  (:use clojure.contrib.duck-streams)
+  (:use compojure)
+  (:import java.util.Date))
 
 (defn update-db! [rep-ops]
   (swap! db into
     (for [rep-op rep-ops] [(:rep-loc rep-op) (:content rep-op)])))
 
+(defn current-time []
+  (. (new Date) (toString)))
+
+(defmacro wave-attempt [expr]
+  `(try ~expr 
+	(catch Throwable t#
+	  (append-spit "/home/avital/swank/log/exceptions"
+		       (str (current-time) \newline 
+			    t# \newline \newline)))))
+
 (defn-log answer-wave [events-map]
   (json-str
+   (wave-attempt
     (rep-ops-to-outgoing-map
-      ((ns-resolve 'we
-         (read-string
-           ((read-json (events-map "proxyingFor")) "action"))) events-map))))
+     ((ns-resolve 'we
+		  (read-string
+		   ((read-json (events-map "proxyingFor")) "action"))) events-map)))))
 
 (def js-snippet 
 
@@ -45,9 +58,10 @@ viewsByMode[newMode].setStyle('display', 'inline')
        (def *enable-logging* false)
        (str "<html><head></head><body><span id='redirect'>"
 	    (escape-html (json-str @*call-log*))
-	    "</span>y<script type='text/javascript'>window.location ="
-	    "'http://thewe.net/json-tree#' + document.getElementById('redirect').textContent</script></body></html>")
-)])
+	    "</span><script type='text/javascript'>window.location ="
+	    "'http://thewe.net/json-tree#' + "
+	    "document.getElementById('redirect').textContent"
+	    "</script></body></html>"))])
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
 
@@ -119,12 +133,14 @@ viewsByMode[newMode].setStyle('display', 'inline')
      :content js-snippet)])
 
 (defn-log run-function-do-operations [events-map]
-  (apply concat  
+  (apply concat
 	 (iterate-events events-map "DOCUMENT_CHANGED"     
-			 (apply concat (for [[start end] annotated-range] 
-					 (if-let [func-to-run (ns-resolve 'we
-									  (read-string  (subs (:content rep-op) start end)))]  
-					   (func-to-run rep-op rep-loc nil) )) ))))
+			 (apply concat 
+				(for [[start end] annotated-range] 
+				  (if-let [func-to-run 
+					   (ns-resolve 'we
+						       (read-string (subs (:content rep-op) start end)))]  
+				    (func-to-run rep-op rep-loc nil)))))))
 
 ; @TODO this has swap! here -  is there a way to prevent it?
 (defn view-dev-this-blip [rep-op rep-loc gadget-state]
@@ -162,5 +178,5 @@ viewsByMode[newMode].setStyle('display', 'inline')
           (do-replication @rep-rules rep-ops))))
 
 (defn-log view-dev-and-do-replication [events-map] 
-  (concat (view-dev events-map) (do-replication-by-json events-map) ))
+  (concat (view-dev events-map) (do-replication-by-json events-map)))
 
