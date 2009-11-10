@@ -45,7 +45,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
        (def *enable-logging* false)
        (str "<html><head></head><body><span id='redirect'>"
 	    (escape-html (json-str @*call-log*))
-	    "</span><script type='text/javascript'>window.location ="
+	    "</span>y<script type='text/javascript'>window.location ="
 	    "'http://thewe.net/json-tree#' + document.getElementById('redirect').textContent</script></body></html>")
 )])
   (ANY "/wave"
