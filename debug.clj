@@ -1,5 +1,6 @@
 (ns we
-  (:use clojure.contrib.pprint))
+  (:use clojure.contrib.pprint)
+  (:use clojure.contrib.duck-streams))
 
 (def *call-log* (atom {}))
 
@@ -82,18 +83,23 @@
      (let [result# 
 	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
 	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
-       (if (and *record-unit-test* (empty? *log-path*))
+       (if (and *record-unit-tests* (empty? *log-path*))
 	 (let [expr# `(~'~name ~@~args)]
 	   (swap! *unit-tests* assoc expr# result#)))
        result#)))
 
+(def *tests-file* "/home/avital/swank/tests/tests.clj")
+
 (defn run-tests []
-  (for [[test expected] @*unit-tests* 
+  (for [[test expected] (read-string (str "(" (slurp *tests-file*) ")"))
 	:let [actual (eval test)] 
 	:when (not= actual expected)]
     `(~test ~actual ~expected)))
 
-
+(defn approve-tests []
+  (seq (for [test @*unit-tests*]
+	 (append-spit *tests-file* (prn-str test))))
+  (reset! *unit-tests* {}))
 
 
 ; tests

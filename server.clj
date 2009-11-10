@@ -49,9 +49,12 @@ viewsByMode[newMode].setStyle('display', 'inline')
 
 (defroutes server
   (GET "/tests/start"
-    (def *record-unit-tests* true))
+    (def *record-unit-tests* true)
+    "Ok")
   (GET "/tests/stop"
-    (def *record-unit-tests* false))
+    (def *record-unit-tests* false)
+    (approve-tests)
+    "Done")
   (GET "/log/start"
     (reset! *call-log* {})
     (def *enable-logging* true)
