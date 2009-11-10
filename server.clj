@@ -1,5 +1,4 @@
 (ns we
-  (:require clojure.contrib.duck-streams)
   (:use clojure.contrib.duck-streams)
   (:use compojure)
   (:import java.util.Date))

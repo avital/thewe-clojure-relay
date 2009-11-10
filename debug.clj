@@ -1,5 +1,4 @@
 (ns we
-  (:require clojure.contrib.pprint)
   (:use clojure.contrib.pprint))
 
 (def *call-log* (atom {}))
