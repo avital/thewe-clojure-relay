@@ -22,25 +22,20 @@
 		   ((read-json (events-map "proxyingFor")) "action"))) events-map)))))
 
 (def js-snippet 
+     "modeChanged = function(lastMode, newMode) {
+\tif (lastMode == wave.Mode.EDIT) {
+\t\twe.state.set('value', $('edit').get('value'));
+\t}
 
-"modeChanged = function(lastMode, newMode) {
+\t// Here are the numeric values of the different modes: {UNKNOWN:0, VIEW:1, EDIT:2, DIFF_ON_OPEN:3, PLAYBACK:4};
+\t// An array that associates for each mode the element that should be displayed
+\tvar viewsByMode = [$('view'), $('view'), $('edit'), $('view'), $('view')]
 
-if (lastMode == wave.Mode.EDIT) {
-we.state.set('value', $('edit').get('value'));
-}
+\tviewsByMode.each(function(el) {
+\t\tel.setStyle('display', 'none')
+\t})
 
-// Here are the numeric values of the different modes: {UNKNOWN:0, VIEW:1, EDIT:2, DIFF_ON_OPEN:3, PLAYBACK:4};
-// An array that associates for each mode the element that should be displayed
-var viewsByMode = [$('view'), $('view'), $('edit'), $('view'), $('view')]
-
-viewsByMode.each(function(el) {
-
-el.setStyle('display', 'none')
-
-})
-
-viewsByMode[newMode].setStyle('display', 'inline')
-
+\tviewsByMode[newMode].setStyle('display', 'inline')
 }")
 
 (defroutes server
@@ -126,14 +121,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
 <input id='edit' wethis=1></input>
 </span>")])
 
-(defn burp-js [rep-op rep-loc gadget-state]
-  [(assoc rep-op
-     :action "delete-range"
-     :loc-type "blip")
-   (assoc rep-op
-     :action "insert-multi"
-     :loc-type "blip"
-     :content js-snippet)])
+(defn burp-js [] (append-text js-snippet))
 
 (defn-log run-function-do-operations [events-map]
   (apply concat
@@ -141,20 +129,52 @@ viewsByMode[newMode].setStyle('display', 'inline')
 			 (apply concat 
 				(for [[start end] annotated-range] 
 				  (if-let [func-to-run 
-					   (ns-resolve 'we
-						       (read-string (subs (:content rep-op) start end)))]  
-				    (func-to-run rep-op rep-loc nil)))))))
+					   (eval (read-string (subs (:content rep-op) start end)))]  
+				    (func-to-run rep-op rep-loc gadget-state)))))))
+
+(def *clipboard* (atom nil))
+
+(defn remember-gadget-key! [key]
+  (fn [rep-op rep-loc gadget-state]
+    (reset! *clipboard* (assoc rep-loc :type "gadget" :key key)) 
+    [(assoc rep-op
+       :action "delete-range"
+       :loc-type "blip")]))
+
+(defn containing-rep-class [rep-loc]
+  (first (for [rep-class rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
+
+(defn replicate-gadget-key! [key]
+  (fn [rep-op rep-loc gadget-state]
+    ( *clipboard* (assoc rep-loc :type "gadget" :key key)) 
+    [(assoc rep-op
+       :action "delete-range"
+       :loc-type "blip")]))
+
+
+(defn append-text [s]
+  (fn [rep-op _ _] 
+    [(assoc rep-op
+       :action "delete-range"
+       :loc-type "blip")
+     (assoc rep-op
+       :action "insert-multi"
+       :loc-type "blip"
+       :content s)]))
+
+(defn create-view-dev-replication [_ rep-loc _]
+  (swap! rep-rules conj
+	 #{(assoc rep-loc :type "gadget" :key "_view.js")
+	   (dissoc (assoc rep-loc :subcontent "// js") :blip-id)}
+	 #{(assoc rep-loc :type "gadget" :key "_view.html")
+	   (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id)}
+	 #{(assoc rep-loc :type "gadget" :key "_view.css")
+	   (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)})
+  [])
 
 ; @TODO this has swap! here -  is there a way to prevent it?
-(defn view-dev-this-blip [rep-op rep-loc gadget-state]
-  (swap! rep-rules conj
-    #{(assoc rep-loc :type "gadget" :key "_view.js")
-      (dissoc (assoc rep-loc :subcontent "// js") :blip-id)}
-    #{(assoc rep-loc :type "gadget" :key "_view.html")
-      (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id)}
-    #{(assoc rep-loc :type "gadget" :key "_view.css")
-      (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)})
-
+(defn view-dev-this-blip [_ rep-loc _] 
+  (create-view-dev-replication _ rep-loc _)
   [{:rep-loc rep-loc :action "delete"}
    {:rep-loc rep-loc :action "append-gadget" :state
     {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
