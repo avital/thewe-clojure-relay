@@ -13,13 +13,19 @@
 		       (str (current-time) \newline 
 			    t# \newline \newline)))))
 
+(defn log-info [title x]
+  (append-spit "/home/avital/swank/log/events"
+	       (str (current-time) \newline title \newline (pprn-str x) \newline))
+  x)
+
 (defn-log answer-wave [events-map]
   (json-str
-   (wave-attempt
-    (rep-ops-to-outgoing-map
-     ((ns-resolve 'we
-		  (read-string
-		   ((read-json (events-map "proxyingFor")) "action"))) events-map)))))
+   (log-info "Operations" (wave-attempt
+      (rep-ops-to-outgoing-map
+       ((ns-resolve 'we
+		    (read-string
+		     ((read-json (events-map "proxyingFor")) "action"))) 
+	(log-info "Events" events-map)))))))
 
 (def js-snippet 
 
@@ -162,7 +168,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
      "_view.js" ""
      "_view.html" ""
      "_view.css" ""
-     "_rep-loc" (pr-str :rep-loc)
+     "_rep-loc" (pr-str rep-loc)
      }}
    {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
    {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
