@@ -161,7 +161,9 @@ viewsByMode[newMode].setStyle('display', 'inline')
      "author" "avital@wavesandbox.com"
      "_view.js" ""
      "_view.html" ""
-     "_view.css" ""}}
+     "_view.css" ""
+     "_rep-loc" (pr-str :rep-loc)
+     }}
    {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
    {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
    {:rep-loc (assoc rep-loc :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
