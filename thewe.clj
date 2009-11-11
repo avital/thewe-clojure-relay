@@ -7,7 +7,6 @@
 ; ======= Atoms =======
 ; =====================
 
-(def db (atom {}))
 (def rep-rules (atom #{}))
 
 ; =========================
@@ -265,14 +264,3 @@
    (wrap-json-operations-with-bundle (mapcat rep-op-to-operations rep-ops)))
 
 
-; ===================================
-; ======= rep-rules utilities =======
-; ===================================
-
-(defn rep-by-text! [text]
-  (let [rep-class (into #{}
-                    (for [[rep-loc content] @db
-                          :when content
-			  :when (.contains content text)] rep-loc))]
-    (swap! rep-rules conj rep-class)
-    rep-class))

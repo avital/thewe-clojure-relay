@@ -3,10 +3,6 @@
   (:use compojure)
   (:import java.util.Date))
 
-(defn update-db! [rep-ops]
-  (swap! db into
-    (for [rep-op rep-ops] [(:rep-loc rep-op) (:content rep-op)])))
-
 (defn current-time []
   (. (new Date) (toString)))
 
@@ -48,6 +44,13 @@ viewsByMode[newMode].setStyle('display', 'inline')
 }")
 
 (defroutes server
+  (GET "/tests/start"
+    (def *record-unit-tests* true)
+    "Ok")
+  (GET "/tests/stop"
+    (def *record-unit-tests* false)
+    (approve-tests)
+    "Done")
   (GET "/log/start"
     (reset! *call-log* {})
     (def *enable-logging* true)
@@ -171,12 +174,10 @@ viewsByMode[newMode].setStyle('display', 'inline')
 	 (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state))))
 
 (defn do-replication-by-json [events-map]
-  (let [rep-ops (incoming-map-to-rep-ops
-                  events-map)]
-    (update-db! rep-ops)
-        (concat
-          (do-replication @rep-rules rep-ops))))
+  (do-replication @rep-rules (incoming-map-to-rep-ops events-map)))
 
 (defn-log view-dev-and-do-replication [events-map] 
   (concat (view-dev events-map) (do-replication-by-json events-map)))
+
+
 
