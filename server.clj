@@ -179,8 +179,8 @@
   (fn [rep-op rep-loc gadget-state]
     (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
       (replicate-replocs!     
-       (assoc source-rep-loc :type "gadget" :key source-key)
-       (assoc rep-loc :type "gadget" :key (.concat rep-key subkey))))
+       (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
+       (assoc rep-loc :type "gadget" :key (str rep-key subkey))))
     [(assoc rep-op
        :action "delete-range"
        :loc-type "blip")]))
