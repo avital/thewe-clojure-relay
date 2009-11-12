@@ -106,8 +106,8 @@
 	  (iterate-events events-map "DOCUMENT_CHANGED"     
 			  (apply concat 
 				 (for [[start end] annotated-range] 
-				   (if-let [func-to-run 
-					    (eval (read-string (subs (:content rep-op) start end)))]  
+				   (let [func-to-run 
+					    (eval (read-string (subs (:content rep-op) start end)))]
 				     (concat (delete-annotations rep-op nil nil) (func-to-run rep-op rep-loc gadget-state)))))))))
 
 
@@ -134,7 +134,7 @@
 	       :loc-type "blip"
 	       :content s)])))
 
-(defn fissure [ops] (fn [_ _ _] ops)
+(defn-log fissure [ops] (fn-log [_ _ _] ops))
 
 
 (defn burp-js [] (append-text js-snippet))
@@ -182,22 +182,28 @@
        (assoc rep-loc :type "gadget" :key (str rep-key subkey))))
     []))
 
-(defn create-view-dev-replication [_ rep-loc _]
+(defn-log create-view-dev-replication [rep-op rep-loc _]
+  
   (replicate-replocs!
    (assoc rep-loc :type "gadget" :key "_view.js")
    (dissoc (assoc rep-loc :subcontent "// js") :blip-id))
+  
   (replicate-replocs!
    (assoc rep-loc :type "gadget" :key "_view.html")
    (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id))
+  
   (replicate-replocs!
    (assoc rep-loc :type "gadget" :key "_view.css")
    (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id))
-  [])
+
+  (mapcat rep-op-to-operations 
+	  []))
 
 ; @TODO this has swap! here -  is there a way to prevent it?
 (defn view-dev-this-blip [_ rep-loc _] 
   (create-view-dev-replication _ rep-loc _)
-  [{:rep-loc rep-loc :action "delete"}
+(mapcat rep-op-to-operations   
+[{:rep-loc rep-loc :action "delete"}
    {:rep-loc rep-loc :action "append-gadget" :state
     {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
      "author" "avital@wavesandbox.com"
@@ -213,26 +219,17 @@
    {:rep-loc (assoc rep-loc :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
    {:rep-loc (assoc rep-loc :blip-id "html") :content "<!-- html -->"}
    {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
-   {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])
+   {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}]))
 
 (defn-log view-dev [events-map]
-  (rep-ops-to-outgoing-map
-   (apply concat
-	  (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state)))))
+    (apply concat
+	   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state))))
 
-(defn do-replication-by-json [events-map]
-  (rep-ops-to-outgoing-map
-   (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
+(defn-log do-replication-by-json [events-map]
+   (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
 
 (defn-log view-dev-and-do-replication [events-map]
-  (rep-ops-to-outgoing-map  
-   (concat 
-    
-    (apply concat
-	   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state)))
-    
-    (do-replication @rep-rules (incoming-map-to-rep-ops events-map))
-    ))) 
+ (wrap-json-operations-with-bundle (concat (view-dev events-map) (do-replication-by-json events-map))))
 
 ;(concat (view-dev events-map) (do-replication-by-json events-map)))
 
