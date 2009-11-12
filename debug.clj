@@ -129,9 +129,9 @@
 
   (clean-unit-tests!)
   (def *enable-logging* true)
-  (defn-log f [x y] 2 (+ (inc x) (dec y)))
-  (defn-log g [x y] (+ (f x y)
-		       (f y x)))
+  (def f (fn-log [x y] 2 (+ (inc x) (dec y))))
+  (def g (fn-log [x y] (+ (f x y)
+			  (f y x))))
   
   (g 2 3)
   (f 1 1)

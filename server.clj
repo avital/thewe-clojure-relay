@@ -187,9 +187,9 @@
      "_view.js" ""
      "_view.html" ""
      "_view.css" ""
-     "_waveId" (rep-loc :wave-id)
-     "_waveletId" (rep-loc :wavelet-id)
-     "_blipId" (rep-loc :blip-id)
+     "_rep-loc.waveId" (rep-loc :wave-id)
+     "_rep-loc.waveletId" (rep-loc :wavelet-id)
+     "_rep-loc.blipId" (rep-loc :blip-id)
      }}
    {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
    {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
