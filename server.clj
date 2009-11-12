@@ -1,6 +1,7 @@
 (ns we
   (:use clojure.contrib.duck-streams)
   (:use compojure)
+  (:use clojure.set)
   (:import java.util.Date))
 
 (defn current-time []
@@ -134,19 +135,46 @@
 
 (def *clipboard* (atom nil))
 
-(defn remember-gadget-key! [key]
+(defn-log remember-gadget-key! [rep-key]
   (fn [rep-op rep-loc gadget-state]
-    (reset! *clipboard* (assoc rep-loc :type "gadget" :key key)) 
+    (reset! *clipboard* 
+	    {:source-key rep-key 
+	     :rep-loc rep-loc 
+	     :subkeys (for [key (keys gadget-state) 
+			     :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
+			 (.replace key rep-key ""))})
     [(assoc rep-op
        :action "delete-range"
        :loc-type "blip")]))
 
-(defn containing-rep-class [rep-loc]
-  (first (for [rep-class rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
+(defn-log containing-rep-class [rep-loc]
+  (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
 
-(defn replicate-gadget-key! [key]
+(defn-log add-to-class [partition class el] 
+  (conj (disj partition class) (conj class el)))
+
+(defn-log replicate-replocs! [r1 r2]
+  (let [rc1 (containing-rep-class r1) rc2 (containing-rep-class r2)]
+    (cond
+      (and (not rc1) (not rc2))  ; when both are not in rep-classes
+      (swap! rep-rules conj #{r1 r2})
+
+      (and rc1 (not rc2))
+      (swap! rep-rules add-to-class rc1 r2)
+
+      (and rc2 (not rc1))
+      (swap! rep-rules add-to-class rc2 r1)
+
+      (and (and rc1 rc2) (not= rc1 rc2))
+      (swap! rep-rules #(conj (disj % rc1 rc2) (union rc1 rc2))))))
+
+
+(defn-log replicate-gadget-key! [rep-key]
   (fn [rep-op rep-loc gadget-state]
-    ( *clipboard* (assoc rep-loc :type "gadget" :key key)) 
+    (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
+      (replicate-replocs!     
+       (assoc source-rep-loc :type "gadget" :key source-key)
+       (assoc rep-loc :type "gadget" :key (.concat rep-key subkey))))
     [(assoc rep-op
        :action "delete-range"
        :loc-type "blip")]))
