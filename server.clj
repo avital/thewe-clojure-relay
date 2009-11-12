@@ -14,19 +14,18 @@
 		       (str (current-time) \newline 
 			    t# \newline \newline)))))
 
-(defn log-info [title x]
-  (append-spit "/home/avital/swank/log/events"
-	       (str (current-time) \newline title \newline (pprn-str x) \newline))
+(defn-log log-info [title x]
+  (comment (append-spit "/home/avital/swank/log/events"
+			(str (current-time) \newline title \newline (pprn-str x) \newline)))
   x)
 
 (defn-log answer-wave [events-map]
   (json-str
    (log-info "Operations" (wave-attempt
-      (rep-ops-to-outgoing-map
-       ((ns-resolve 'we
-		    (read-string
-		     ((read-json (events-map "proxyingFor")) "action"))) 
-	(log-info "Events" events-map)))))))
+			   ((ns-resolve 'we
+					(read-string
+					 ((read-json (events-map "proxyingFor")) "action"))) 
+			    (log-info "Events" events-map))))))
 
 (def js-snippet 
      "modeChanged = function(lastMode, newMode) {
@@ -44,6 +43,8 @@
 
 \tviewsByMode[newMode].setStyle('display', 'inline')
 }")
+
+(def html-snippet "<span wecursor='value'>\t<span id='view' wethis=1></span>\t<input id='edit' wethis=1></input></span>")
 
 (defroutes server
   (GET "/tests/start"
@@ -93,63 +94,63 @@
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] ~for-args )))
 
 
-(defn-log identify-this-blip [rep-op rep-loc gadget-state] 
-  [(assoc rep-op
-     :action "delete-range"
-     :loc-type "blip")
-   (assoc rep-op
-      :action "insert-multi"
-      :loc-type "blip"
-      :content (str rep-loc))])
+(defn-log delete-annotations [rep-op _ _]
+  (mapcat rep-op-to-operations    
+	  [(assoc rep-op
+	     :action "delete-range"
+	     :loc-type "blip")]))
 
-(defn-log identify-blip [events-map]
-  (apply concat 
-	(iterate-events events-map "WAVELET_SELF_ADDED" (identify-this-blip rep-op rep-loc gadget-state))))
+(defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
+  (wrap-json-operations-with-bundle
+   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
+	  (iterate-events events-map "DOCUMENT_CHANGED"     
+			  (apply concat 
+				 (for [[start end] annotated-range] 
+				   (if-let [func-to-run 
+					    (eval (read-string (subs (:content rep-op) start end)))]  
+				     (concat (delete-annotations rep-op nil nil) (func-to-run rep-op rep-loc gadget-state)))))))))
+
+
+(defn-log identify-this-blip [rep-op rep-loc gadget-state] ; this is a signature of a function that will be called after evaluation 
+  (mapcat rep-op-to-operations  
+	  [(assoc rep-op
+	     :action "insert-multi"
+	     :loc-type "blip"
+	     :content (str rep-loc))]))
 
 (defn-log create-child-blip [rep-op rep-loc gadget-state] 
-  [(assoc rep-op
-     :action "delete-range"
-     :loc-type "blip")
-   (assoc rep-op
-      :action "create-child-blip"
-      :loc-type "blip"
-      :child-blip-id "new-blip-id"
-      :content (str "hi!"))])
+  (mapcat rep-op-to-operations  
+	  [(assoc rep-op
+	     :action "create-child-blip"
+	     :loc-type "blip"
+	     :child-blip-id "new-blip-id"
+	     :content (str "hi!"))]))
 
-(defn burp-html [rep-op rep-loc gadget-state]
-  [(assoc rep-op
-     :action "delete-range"
-     :loc-type "blip")
-   (assoc rep-op
-     :action "insert-multi"
-     :loc-type "blip"
-     :content "<span wecursor='value'>
-<span id='view' wethis=1></span>
-<input id='edit' wethis=1></input>
-</span>")])
+(defn append-text [s]
+  (fn [rep-op _ _] 
+    (mapcat rep-op-to-operations 
+	    [(assoc rep-op
+	       :action "insert-multi"
+	       :loc-type "blip"
+	       :content s)])))
 
-(defn-log run-function-do-operations [events-map]
-  (apply concat
-	 (iterate-events events-map "DOCUMENT_CHANGED"     
-			 (apply concat 
-				(for [[start end] annotated-range] 
-				  (if-let [func-to-run 
-					   (eval (read-string (subs (:content rep-op) start end)))]  
-				    (func-to-run rep-op rep-loc gadget-state)))))))
+(defn fissure [ops] (fn [_ _ _] ops)
+
+
+(defn burp-js [] (append-text js-snippet))
+(defn burp-html [] (append-text html-snippet))
 
 (def *clipboard* (atom nil))
 
 (defn-log remember-gadget-key! [rep-key]
-  (fn [rep-op rep-loc gadget-state]
+  (fn-log [rep-op rep-loc gadget-state]
     (reset! *clipboard* 
 	    {:source-key rep-key 
 	     :rep-loc rep-loc 
 	     :subkeys (for [key (keys gadget-state) 
 			     :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
 			 (.replace key rep-key ""))})
-    [(assoc rep-op
-       :action "delete-range"
-       :loc-type "blip")]))
+    []))
 
 (defn-log containing-rep-class [rep-loc]
   (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
@@ -174,35 +175,23 @@
 
 
 (defn-log replicate-gadget-key! [rep-key]
-  (fn [rep-op rep-loc gadget-state]
+  (fn-log [rep-op rep-loc gadget-state]
     (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
       (replicate-replocs!     
        (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
        (assoc rep-loc :type "gadget" :key (str rep-key subkey))))
-    [(assoc rep-op
-       :action "delete-range"
-       :loc-type "blip")]))
-
-(defn append-text [s]
-  (fn [rep-op _ _] 
-    [(assoc rep-op
-       :action "delete-range"
-       :loc-type "blip")
-     (assoc rep-op
-       :action "insert-multi"
-       :loc-type "blip"
-       :content s)]))
-
-(defn burp-js [] (append-text js-snippet))
+    []))
 
 (defn create-view-dev-replication [_ rep-loc _]
-  (swap! rep-rules conj
-	 #{(assoc rep-loc :type "gadget" :key "_view.js")
-	   (dissoc (assoc rep-loc :subcontent "// js") :blip-id)}
-	 #{(assoc rep-loc :type "gadget" :key "_view.html")
-	   (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id)}
-	 #{(assoc rep-loc :type "gadget" :key "_view.css")
-	   (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)})
+  (replicate-replocs!
+   (assoc rep-loc :type "gadget" :key "_view.js")
+   (dissoc (assoc rep-loc :subcontent "// js") :blip-id))
+  (replicate-replocs!
+   (assoc rep-loc :type "gadget" :key "_view.html")
+   (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id))
+  (replicate-replocs!
+   (assoc rep-loc :type "gadget" :key "_view.css")
+   (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id))
   [])
 
 ; @TODO this has swap! here -  is there a way to prevent it?
@@ -227,14 +216,25 @@
    {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])
 
 (defn-log view-dev [events-map]
-  (apply concat
-	 (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state))))
+  (rep-ops-to-outgoing-map
+   (apply concat
+	  (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state)))))
 
 (defn do-replication-by-json [events-map]
-  (do-replication @rep-rules (incoming-map-to-rep-ops events-map)))
+  (rep-ops-to-outgoing-map
+   (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
 
-(defn-log view-dev-and-do-replication [events-map] 
-  (concat (view-dev events-map) (do-replication-by-json events-map)))
+(defn-log view-dev-and-do-replication [events-map]
+  (rep-ops-to-outgoing-map  
+   (concat 
+    
+    (apply concat
+	   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state)))
+    
+    (do-replication @rep-rules (incoming-map-to-rep-ops events-map))
+    ))) 
+
+;(concat (view-dev events-map) (do-replication-by-json events-map)))
 
 
 
