@@ -127,8 +127,6 @@
 <input id='edit' wethis=1></input>
 </span>")])
 
-(defn burp-js [] (append-text js-snippet))
-
 (defn-log run-function-do-operations [events-map]
   (apply concat
 	 (iterate-events events-map "DOCUMENT_CHANGED"     
@@ -157,7 +155,6 @@
        :action "delete-range"
        :loc-type "blip")]))
 
-
 (defn append-text [s]
   (fn [rep-op _ _] 
     [(assoc rep-op
@@ -167,6 +164,8 @@
        :action "insert-multi"
        :loc-type "blip"
        :content s)]))
+
+(defn burp-js [] (append-text js-snippet))
 
 (defn create-view-dev-replication [_ rep-loc _]
   (swap! rep-rules conj
@@ -188,7 +187,9 @@
      "_view.js" ""
      "_view.html" ""
      "_view.css" ""
-;     "_rep-loc" (pr-str rep-loc)
+     "_waveId" (rep-loc :wave-id)
+     "_waveletId" (rep-loc :wavelet-id)
+     "_blipId" (rep-loc :blip-id)
      }}
    {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
    {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}

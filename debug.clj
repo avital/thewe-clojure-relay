@@ -13,14 +13,20 @@
 (def *log-path* [])
 (def *log-counter* (atom 0))
 (def *unit-tests* (atom {}))
-     
+
+(defn ppr-str [x]
+  (with-out-str (pprint x)))
+
+(defn pprn-str [x]
+  (str (ppr-str x) \newline))
+
 (defn log** [result]
   (let [log-path (conj *log-path* :result)]
     (if (instance? Throwable result)
       (do
         (swap! *call-log* assoc-in log-path (str "[Exception] " result))
         (throw result))
-      (swap! *call-log* assoc-in log-path (with-out-str (pprint result))))
+      (swap! *call-log* assoc-in log-path (ppr-str result)))
     result))
 
 (defmacro log* [result]
@@ -78,15 +84,20 @@
 
 (def *record-unit-tests* false)
 
-(defmacro defn-log [name args & rest]
-  `(defn ~name ~args
-     (let [result# 
+(defmacro logify [name args rest]
+  `(let [result# 
 	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
 	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
        (if (and *record-unit-tests* (empty? *log-path*))
 	 (let [expr# `(~'~name ~@~args)]
 	   (swap! *unit-tests* assoc expr# result#)))
-       result#)))
+       result#))
+
+(defmacro fn-log [args & rest]
+  `(fn ~args (logify '-anonymous- ~args ~rest)))
+
+(defmacro defn-log [name args & rest]
+  `(defn ~name ~args (logify ~name ~args ~rest)))
 
 (def *tests-file* "/home/avital/swank/tests/tests.clj")
 
@@ -111,17 +122,20 @@
   (defn-mark f [x y])
 
   (f 2 3)
+
   
-  (macroexpand-1 '(defn-log f [x y] (+ x y)))
+  
+  (macroexpand '(defn-log f [x y] (+ x y)))
 
   (clean-unit-tests!)
+  (def *enable-logging* true)
   (defn-log f [x y] 2 (+ (inc x) (dec y)))
   (defn-log g [x y] (+ (f x y)
 		       (f y x)))
   
   (g 2 3)
   (f 1 1)
-  @*unit-tests*
+  @*call-log*
 
   (eval '(f 2 3))
   
