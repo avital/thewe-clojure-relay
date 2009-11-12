@@ -168,7 +168,7 @@ viewsByMode[newMode].setStyle('display', 'inline')
      "_view.js" ""
      "_view.html" ""
      "_view.css" ""
-     "_rep-loc" (pr-str rep-loc)
+;     "_rep-loc" (pr-str rep-loc)
      }}
    {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
    {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
