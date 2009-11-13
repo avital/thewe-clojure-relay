@@ -60,12 +60,7 @@
     [(comment {:headers {"Content-Type" "text/plain"}})
      (do
        (def *enable-logging* false)
-       (str "<html><head></head><body><span id='redirect'>"
-	    (escape-html (json-str @*call-log*))
-	    "</span><script type='text/javascript'>window.location ="
-	    "'http://thewe.net/json-tree#' + "
-	    "document.getElementById('redirect').textContent"
-	    "</script></body></html>"))])
+       (.replace json-tree "@@@result@@@" (escape-html (json-str @*call-log*))))])
   (ANY "/wave"
     (answer-wave (read-json (params :events)))))
 
@@ -123,8 +118,8 @@
      :action "insert-multi"
      :loc-type "blip"
      :content "<span wecursor='value'>
-<span id='view' wethis=1></span>
-<input id='edit' wethis=1></input>
+\t<span id='view' wethis=1></span>
+\t<input id='edit' wethis=1></input>
 </span>")])
 
 (defn-log run-function-do-operations [events-map]
