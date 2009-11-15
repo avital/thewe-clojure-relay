@@ -84,38 +84,6 @@
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})
 		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}]] ~for-args)))
 
-(defn-log identify-this-blip [rep-op rep-loc gadget-state] 
-  [(assoc rep-op
-     :action "delete-range"
-     :loc-type "blip")
-   (assoc rep-op
-      :action "insert-multi"
-      :loc-type "blip"
-      :content (str rep-loc))])
-
-(defn-log identify-blip [events-map]
-  (apply concat 
-	(iterate-events events-map "WAVELET_SELF_ADDED" (identify-this-blip rep-op rep-loc gadget-state))))
-
-(defn-log create-child-blip [rep-op rep-loc gadget-state] 
-  [(assoc rep-op
-     :action "delete-range"
-     :loc-type "blip")
-   (assoc rep-op
-      :action "create-child-blip"
-      :loc-type "blip"
-      :child-blip-id "new-blip-id"
-      :content (str "hi!"))])
-
-(defn-log run-function-do-operations [events-map]
-  (apply concat
-	 (iterate-events events-map "DOCUMENT_CHANGED"     
-			 (apply concat 
-				(for [[start end] annotated-range] 
-				  (if-let [func-to-run 
-					   (eval (read-string (subs (:content rep-op) start end)))]  
-				    (func-to-run rep-op rep-loc gadget-state)))))))
-
 (defn-log delete-annotation [annotation]
   (mapcat rep-op-to-operations  
 	  [(assoc *event-context*
@@ -150,7 +118,7 @@
 (defn-log identify-this-blip []
   (echo (:rep-loc *event-context*)))
 
-(defn-log create-child-blip [] 
+(defn-log create-child-blip [rep-op] 
   (mapcat rep-op-to-operations  
 	  [(assoc rep-op
 	     :action "create-child-blip"
