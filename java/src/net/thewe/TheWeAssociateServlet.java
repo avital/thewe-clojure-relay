@@ -14,7 +14,7 @@ import javax.jdo.annotations.PersistenceCapable;
 import javax.jdo.annotations.Persistent;
 import javax.jdo.annotations.PrimaryKey;
 
-import com.google.appengine.repackaged.org.joda.time.DateTime;
+//import com.google.appengine.repackaged.org.joda.time.DateTime;
 import com.google.wave.api.AbstractRobotServlet;
 import com.google.wave.api.Annotation;
 import com.google.wave.api.Blip;

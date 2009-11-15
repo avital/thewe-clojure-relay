@@ -129,6 +129,8 @@ public abstract class AbstractRobotServlet extends HttpServlet implements
 		
 		URL url = new URL("http://jem.thewe.net/" + port + "/wave");
 		URLConnection conn = url.openConnection();
+		log ("Setting timeout to infinity");
+		conn.setReadTimeout(0);
 		conn.setDoOutput(true);
 		OutputStreamWriter writer = new OutputStreamWriter(conn
 				.getOutputStream());
