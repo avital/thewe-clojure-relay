@@ -67,7 +67,12 @@
        (def *enable-logging* false)
        (.replace json-tree-html "@@@result@@@" (escape-html (json-str @*call-log*))))])
   (ANY "/wave"
-    (answer-wave (read-json (params :events)))))
+    (let [events (params :events)]
+      (if (or (.contains events "\"name\":\"we/eval\"")
+	      (.contains events "BLIP_SUBMITTED")
+	      (.contains events "WAVELET_SELF_ADDED"))
+	(answer-wave (read-json (params :events)))
+	(json-str (wrap-json-operations-with-bundle []))))))
 
 (defmacro iterate-events [events listen-to for-args]
   `(let [~'modified-blip-ids
@@ -84,6 +89,8 @@
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})
 		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}]] ~for-args)))
 
+(def *event-context*)
+
 (defn-log delete-annotation [annotation]
   (mapcat rep-op-to-operations  
 	  [(assoc *event-context*
@@ -91,7 +98,6 @@
 	     :loc-type "blip"
 	     :range (log (annotation "range")))]))
 
-(def *event-context*)
 
 (defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
   (wrap-json-operations-with-bundle
@@ -106,7 +112,8 @@
 			      (binding [*event-context* (assoc rep-op :cursor end)]
 				(concat
 				 (delete-annotation annotation)
-				 (eval (read-string (subs (:content rep-op) start end)))))))))))
+				 (try (eval (read-string (subs (:content rep-op) start end)))
+				      (catch Throwable t []))))))))))
 
 (defn-log echo [s]
   (mapcat rep-op-to-operations 
