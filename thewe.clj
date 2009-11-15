@@ -152,12 +152,14 @@
         "waveId"  wave-id,
         "type"  "DOCUMENT_DELETE"}]))
 
+; @TODO add pa
 (defmethod rep-op-to-operations {:loc-type "blip" :action "delete-range"} [rep-op]
   (let [rep-loc (rep-op :rep-loc)
         wave-id (:wave-id rep-loc)
         wavelet-id (:wavelet-id rep-loc)
         blip-id (:blip-id rep-loc)]
-    `[~@(for [[start end] (:annotate rep-op)] 
+    `[~@(for [annotation (:annotations rep-op) 		  
+     :let [start (dig annotation "range" "start") end (dig annotation "range" "end")]] 
 	  {"index" -1,
 	   "waveletId" wavelet-id,
 	   "blipId" blip-id,
@@ -166,12 +168,27 @@
 	   "waveId" wave-id,
 	   "type" "DOCUMENT_DELETE"})]))
 
+(defmethod rep-op-to-operations {:loc-type "blip" :action "delete-annotation"} [rep-op]
+  (let [rep-loc (rep-op :rep-loc)
+        wave-id (:wave-id rep-loc)
+        wavelet-id (:wavelet-id rep-loc)
+        blip-id (:blip-id rep-loc)
+	range (:range rep-op)]
+    [{"index" -1,
+      "waveletId" wavelet-id,
+      "blipId" blip-id,
+      "javaClass" "com.google.wave.api.impl.OperationImpl",
+      "property" range,
+      "waveId" wave-id,
+      "type" "DOCUMENT_ANNOTATION_DELETE"}]))
+
+
 
 ; @todo: what is the difference between using "append" and :append?
 
 (defmethod rep-op-to-operations {:loc-type "blip" :action "insert"} [rep-op]
   (let [rep-loc (rep-op :rep-loc)]
-    [{"index"  (:index rep-op),
+    [{"index"  (:cursor rep-op),
       "waveletId"  (:wavelet-id rep-loc),
       "blipId"  (:blip-id rep-loc),
       "javaClass"  "com.google.wave.api.impl.OperationImpl",
@@ -180,16 +197,6 @@
       "type"  "DOCUMENT_INSERT"
       }]))
 
-(defmethod rep-op-to-operations {:loc-type "blip" :action "insert-multi"} [rep-op]
-  (let [rep-loc (rep-op :rep-loc)]
-    `[~@(for [[start end] (:annotate rep-op)] 
-	  {"index"  start,
-	   "waveletId"  (:wavelet-id rep-loc),
-	   "blipId"  (:blip-id rep-loc),
-	   "javaClass"  "com.google.wave.api.impl.OperationImpl",
-	   "property"  (:content rep-op),
-	   "waveId"  (:wave-id rep-loc),
-	   "type"  "DOCUMENT_INSERT"})]))
 
 (defmethod rep-op-to-operations {:loc-type "blip" :action "append-gadget"} [rep-op]
   ; @todo: DON'T HAVE THIS DUPLICATION!!! use some sort of basic-rep-op
