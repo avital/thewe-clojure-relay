@@ -79,18 +79,10 @@
 	   :let [~'blip-data (dig ~events "blips" "map" ~'blip-id)
 		 ~'content (~'blip-data "content")		 
 		 ~'blip-annotations (dig ~'blip-data "annotations" "list")		 
-		 ~'annotated-range
-		 (for [~'annotation ~'blip-annotations 
-		       :when (= (~'annotation "name") "we/eval")
- 		       :when (not= -1 (dig ~'annotation "range" "start"))]
-		   [(dig ~'annotation "range" "start") (dig ~'annotation "range" "end")])
-
 		 ~'rep-loc {:type "blip"  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId")}
-		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content  :annotate ~'annotated-range}		 
-
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
-		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] ~for-args )))
-
+		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})
+		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}]] ~for-args)))
 
 (defn-log identify-this-blip [rep-op rep-loc gadget-state] 
   [(assoc rep-op
@@ -124,31 +116,41 @@
 					   (eval (read-string (subs (:content rep-op) start end)))]  
 				    (func-to-run rep-op rep-loc gadget-state)))))))
 
-(defn-log delete-annotations [rep-op _ _]
-  (mapcat rep-op-to-operations    
-	  [(assoc rep-op
-	     :action "delete-range"
-	     :loc-type "blip")]))
+(defn-log delete-annotation [annotation]
+  (mapcat rep-op-to-operations  
+	  [(assoc *event-context*
+	     :action "delete-annotation"
+	     :loc-type "blip"
+	     :range (log (annotation "range")))]))
+
+(def *event-context*)
 
 (defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
   (wrap-json-operations-with-bundle
-   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
-	  (iterate-events events-map "DOCUMENT_CHANGED"     
-			  (apply concat 
-				 (for [[start end] annotated-range] 
-				   (let [func-to-run 
-					    (eval (read-string (subs (:content rep-op) start end)))]
-				     (concat (delete-annotations rep-op nil nil) (func-to-run rep-op rep-loc gadget-state)))))))))
+    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
+     (iterate-events events-map "DOCUMENT_CHANGED"     
+		     (apply concat 
+			    (for [annotation (log (:annotations rep-op)) 		  
+				  :when (not= -1 (dig annotation "range" "start"))
+				  :when (= "we/eval" (annotation "name"))
+				  :let [start (dig annotation "range" "start") 
+					end (dig annotation "range" "end")]] 
+			      (binding [*event-context* (assoc rep-op :cursor end)]
+				(concat
+				 (delete-annotation annotation)
+				 (eval (read-string (subs (:content rep-op) start end)))))))))))
 
-
-(defn-log identify-this-blip [rep-op rep-loc gadget-state] ; this is a signature of a function that will be called after evaluation 
-  (mapcat rep-op-to-operations  
-	  [(assoc rep-op
-	     :action "insert-multi"
+(defn-log echo [s]
+  (mapcat rep-op-to-operations 
+	  [(assoc *event-context*
+	     :action "insert"
 	     :loc-type "blip"
-	     :content (str rep-loc))]))
+	     :content  (str \newline (pprn-str s)))]))
 
-(defn-log create-child-blip [rep-op rep-loc gadget-state] 
+(defn-log identify-this-blip []
+  (echo (:rep-loc *event-context*)))
+
+(defn-log create-child-blip [] 
   (mapcat rep-op-to-operations  
 	  [(assoc rep-op
 	     :action "create-child-blip"
@@ -156,13 +158,6 @@
 	     :child-blip-id "new-blip-id"
 	     :content (str "hi!"))]))
 
-(defn append-text [s]
-  (fn [rep-op _ _] 
-    (mapcat rep-op-to-operations 
-	    [(assoc rep-op
-	       :action "insert-multi"
-	       :loc-type "blip"
-	       :content s)])))
 
 (defn-log fissure [ops] (fn-log [_ _ _] ops))
 
