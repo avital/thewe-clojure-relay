@@ -219,7 +219,7 @@
        "properties" {"javaClass" "java.util.HashMap",
 		     "map" {(:key rep-loc) (:content rep-op)
 			    "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}},
-       "java_class" "com.google.wave.api.Gadget"},
+       "javaClass" "com.google.wave.api.Gadget"},
       "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"}]))
 
 
