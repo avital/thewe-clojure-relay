@@ -47,9 +47,11 @@
 (defn third [l]
   (nth l 2))
 
+(comment
 (defn monad-log-form [comp]
   (apply concat (for [name val] (partition 2 comp)
 		     [name `(log ~val)])))
+)
 
 (defn internal-log-form [expr]
   (let [func (first expr)
