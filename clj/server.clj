@@ -67,12 +67,15 @@
        (def *enable-logging* false)
        (.replace json-tree-html "@@@result@@@" (escape-html (json-str @*call-log*))))])
   (ANY "/wave"
-    (let [events (params :events)]
-      (if (or (.contains events "\"name\":\"we/eval\"")
-	      (.contains events "BLIP_SUBMITTED")
-	      (.contains events "WAVELET_SELF_ADDED"))
-	(answer-wave (read-json (params :events)))
-	(json-str (wrap-json-operations-with-bundle []))))))
+    (log (let [events (log (params :events))]
+	   (if (or (.contains events "\"name\":\"we/eval\"")
+		   (.contains events "BLIP_SUBMITTED")
+		   (.contains events "WAVELET_SELF_ADDED"))
+	     (answer-wave (read-json (params :events)))
+	     (json-str (wrap-json-operations-with-bundle [])))))))
+
+
+(def *event-context*)
 
 (defmacro iterate-events [events listen-to for-args]
   `(let [~'modified-blip-ids
@@ -87,9 +90,9 @@
 		 ~'rep-loc {:type "blip"  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId")}
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})
-		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}]] ~for-args)))
+		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}]] 
+       (binding [~'*event-context* ~'rep-op] ~for-args))))
 
-(def *event-context*)
 
 (defn-log delete-annotation [annotation]
   (mapcat rep-op-to-operations  
@@ -109,48 +112,48 @@
 				  :when (= "we/eval" (annotation "name"))
 				  :let [start (dig annotation "range" "start") 
 					end (dig annotation "range" "end")]] 
-			      (binding [*event-context* (assoc rep-op :cursor end)]
-				(concat
-				 (delete-annotation annotation)
-				 (try (eval (read-string (subs (:content rep-op) start end)))
-				      (catch Throwable t []))))))))))
+			      (binding [*event-context* (assoc *event-context* :cursor end)]
+			       (concat
+				(delete-annotation annotation)
+				(try (eval (read-string (subs (:content rep-op) start end)))
+				     (catch Throwable t []))))))))))
+
+(defn-log echo-pp [s]
+  (echo (pprn-str s)))
 
 (defn-log echo [s]
   (mapcat rep-op-to-operations 
 	  [(assoc *event-context*
 	     :action "insert"
 	     :loc-type "blip"
-	     :content  (str \newline (pprn-str s)))]))
+	     :content  (str \newline s))]))
+
 
 (defn-log identify-this-blip []
-  (echo (:rep-loc *event-context*)))
+  (echo-pp (:rep-loc *event-context*)))
 
-(defn-log create-child-blip [rep-op] 
+(defn-log create-child-blip [] 
   (mapcat rep-op-to-operations  
-	  [(assoc rep-op
+	  [(assoc *event-context*
 	     :action "create-child-blip"
 	     :loc-type "blip"
 	     :child-blip-id "new-blip-id"
 	     :content (str "hi!"))]))
 
 
-(defn-log fissure [ops] (fn-log [_ _ _] ops))
-
-
-(defn burp-js [] (append-text js-snippet))
-(defn burp-html [] (append-text html-snippet))
+(defn burp-js [] (echo js-snippet))
+(defn burp-html [] (echo html-snippet))
 
 (def *clipboard* (atom nil))
 
 (defn-log remember-gadget-key! [rep-key]
-  (fn-log [rep-op rep-loc gadget-state]
-    (reset! *clipboard* 
-	    {:source-key rep-key 
-	     :rep-loc rep-loc 
-	     :subkeys (for [key (keys gadget-state) 
-			     :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
-			 (.replace key rep-key ""))})
-    []))
+  (reset! *clipboard* 
+	  {:source-key rep-key 
+	   :rep-loc *event-context* 
+	   :subkeys (for [key (keys (:gadget-state *event-context*)) 
+			  :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
+		      (.replace key rep-key ""))})
+  (echo "ok!"))
 
 (defn-log containing-rep-class [rep-loc]
   (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
@@ -175,55 +178,53 @@
 
 
 (defn-log replicate-gadget-key! [rep-key]
-  (fn-log [rep-op rep-loc gadget-state]
-    (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
-      (replicate-replocs!     
-       (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
-       (assoc rep-loc :type "gadget" :key (str rep-key subkey))))
-    []))
+  (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
+    (replicate-replocs!     
+     (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
+     (assoc (:rep-loc *event-context*) :type "gadget" :key (str rep-key subkey))))
+  (echo "replicated!"))
 
-(defn-log create-view-dev-replication [rep-op rep-loc _]
+(defn-log create-view-dev-replication! []
+  (let [rep-loc (:rep-loc *event-context*)]
+    (replicate-replocs!
+     (assoc rep-loc :type "gadget" :key "_view.js")
+     (dissoc (assoc rep-loc :subcontent "// js") :blip-id))
+	
+    (replicate-replocs!
+     (assoc rep-loc :type "gadget" :key "_view.html")
+     (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id))
+	
+    (replicate-replocs!
+     (assoc rep-loc :type "gadget" :key "_view.css")
+     (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)))
   
-  (replicate-replocs!
-   (assoc rep-loc :type "gadget" :key "_view.js")
-   (dissoc (assoc rep-loc :subcontent "// js") :blip-id))
-  
-  (replicate-replocs!
-   (assoc rep-loc :type "gadget" :key "_view.html")
-   (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id))
-  
-  (replicate-replocs!
-   (assoc rep-loc :type "gadget" :key "_view.css")
-   (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id))
-
-  (mapcat rep-op-to-operations 
-	  []))
+  (mapcat rep-op-to-operations []))
 
 ; @TODO this has swap! here -  is there a way to prevent it?
-(defn view-dev-this-blip [_ rep-loc _] 
-  (create-view-dev-replication _ rep-loc _)
-(mapcat rep-op-to-operations   
-[{:rep-loc rep-loc :action "delete"}
-   {:rep-loc rep-loc :action "append-gadget" :state
-    {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
-     "author" "avital@wavesandbox.com"
-     "_view.js" ""
-     "_view.html" ""
-     "_view.css" ""
-     "_rep-loc.waveId" (rep-loc :wave-id)
-     "_rep-loc.waveletId" (rep-loc :wavelet-id)
-     "_rep-loc.blipId" (rep-loc :blip-id)
-     }}
-   {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
-   {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
-   {:rep-loc (assoc rep-loc :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
-   {:rep-loc (assoc rep-loc :blip-id "html") :content "<!-- html -->"}
-   {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
-   {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}]))
+(defn view-dev-this-blip []
+  (create-view-dev-replication!)
+  (let [rep-loc (:rep-loc *event-context*)]
+    (mapcat rep-op-to-operations   
+	    [{:rep-loc rep-loc :action "delete"}
+	     {:rep-loc rep-loc :action "append-gadget" :state
+	      {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
+	       "author" "avital@wavesandbox.com"
+	       "_view.js" ""
+	       "_view.html" ""
+	       "_view.css" ""
+	       "_rep-loc.waveId" (rep-loc :wave-id)
+	       "_rep-loc.waveletId" (rep-loc :wavelet-id)
+	       "_rep-loc.blipId" (rep-loc :blip-id)}}
+	     {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
+	     {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
+	     {:rep-loc (assoc rep-loc :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
+	     {:rep-loc (assoc rep-loc :blip-id "html") :content "<!-- html -->"}
+	     {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
+	     {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])))
 
 (defn-log view-dev [events-map]
-    (apply concat
-	   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip rep-op rep-loc gadget-state))))
+  (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
+   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log do-replication-by-json [events-map]
    (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
