@@ -7,12 +7,16 @@
 (defn current-time []
   (. (new Date) (toString)))
 
+(defn log-exception [t]
+  (append-spit "/home/avital/swank/log/exceptions"
+	       (str (current-time) \newline 
+		    t \newline \newline)))
+
 (defmacro wave-attempt [expr]
   `(try ~expr 
 	(catch Throwable t#
-	  (append-spit "/home/avital/swank/log/exceptions"
-		       (str (current-time) \newline 
-			    t# \newline \newline)))))
+	  (log-exception t#)
+	  t#)))
 
 (defn-log log-info [title x]
   (append-spit "/home/avital/swank/log/operations"
@@ -116,7 +120,8 @@
 			       (concat
 				(delete-annotation annotation)
 				(try (eval (read-string (subs (:content rep-op) start end)))
-				     (catch Throwable t []))))))))))
+				     (catch Throwable t 
+				       (log-exception t) []))))))))))
 
 (def foo run-function-do-operations)
 
