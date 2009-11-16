@@ -136,9 +136,8 @@
 
 (defn-log fissure [ops] (fn-log [_ _ _] ops))
 
-
-(defn burp-js [] (append-text js-snippet))
-(defn burp-html [] (append-text html-snippet))
+(defn burp-js [] (echo js-snippet))
+(defn burp-html [] (echo html-snippet))
 
 (def *clipboard* (atom nil))
 

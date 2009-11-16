@@ -4702,7 +4702,7 @@ insertJSONToTree = function(tree, json) {
 
 		if (['object', 'hash'].contains($type(value))) {
 			var node = tree.insert({
-				text: key.substring(key.indexOf('/') + 1),
+				text: '[' + value.time + '] ' + key.substring(key.indexOf('/') + 1),
 				onClick: function() {
 					$('result').set('text', value.result)
 				},

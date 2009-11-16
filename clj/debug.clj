@@ -20,6 +20,12 @@
 (defn pprn-str [x]
   (str (ppr-str x) \newline))
 
+(defmacro log-time [expr]
+  `(let [start# (. System (nanoTime))
+         ret# ~expr]
+     (swap! *call-log* assoc-in (conj *log-path* :time) (str (/ (double (- (. System (nanoTime)) start#)) 1000000.0) " msecs"))
+     ret#))
+
 (defn log** [result]
   (let [log-path (conj *log-path* :result)]
     (if (instance? Throwable result)
@@ -30,7 +36,7 @@
     result))
 
 (defmacro log* [result]
-  `(log** (attempt ~result)))
+  `(log** (log-time (attempt ~result))))
 
 (defn log-conj [pre new]
   (conj pre (str (swap! *log-counter* inc) "/" new)))
@@ -40,6 +46,10 @@
 
 (defn third [l]
   (nth l 2))
+
+(defn monad-log-form [comp]
+  (apply concat (for [name val] (partition 2 comp)
+		     [name `(log ~val)])))
 
 (defn internal-log-form [expr]
   (let [func (first expr)
