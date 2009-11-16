@@ -97,13 +97,15 @@
 (def *record-unit-tests* false)
 
 (defmacro logify [name args rest]
-  `(let [result# 
+  `(if *enable-logging*
+     (let [result# 
 	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
 	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
        (if (and *record-unit-tests* (empty? *log-path*))
 	 (let [expr# `(~'~name ~@~args)]
 	   (swap! *unit-tests* assoc expr# result#)))
-       result#))
+       result#)
+     (do ~@rest)))
 
 (defmacro fn-log [args & rest]
   `(fn ~args (logify '-anonymous- ~args ~rest)))
