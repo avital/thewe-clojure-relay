@@ -16,7 +16,7 @@
   `(try ~expr 
 	(catch Throwable t#
 	  (log-exception t#)
-	  t#)))
+	  (wrap-json-operations-with-bundle []))))
 
 (defn-log log-info [title x]
   (append-spit "/home/avital/swank/log/operations"
@@ -121,7 +121,9 @@
 				(delete-annotation annotation)
 				(try (eval (read-string (subs (:content rep-op) start end)))
 				     (catch Throwable t 
-				       (log-exception t) []))))))))))
+				       (log-exception t) (echo t)))))))))))
+
+
 
 (def foo run-function-do-operations)
 
@@ -152,6 +154,31 @@
 (defn burp-html [] (echo html-snippet))
 
 (def *clipboard* (atom nil))
+(def *other-wave* (atom nil))
+
+(defn-log remember-wave! []
+  (reset! *other-wave* *event-context*)
+  (echo "Remembered"))
+
+(defmacro on-other-wave [expr]
+  `(binding [*event-context* @*other-wave*]
+     ~expr))
+
+(defn-log modify-ggg [key val]
+  [{"blipId" (dig *event-context* :rep-loc :blip-id),
+    "index" -1,
+    "waveletId" (dig *event-context* :rep-loc :wavelet-id),
+    "javaClass" "com.google.wave.api.impl.OperationImpl",
+    "waveId" (dig *event-context* :rep-loc :wave-id),
+    "property"
+    {"type" "GADGET",
+     "properties"
+     {"javaClass" "java.util.HashMap",
+      "map"
+      {key val,
+       "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}},
+     "javaClass" "com.google.wave.api.Gadget"},
+    "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"}])
 
 (defn-log remember-gadget-key! [rep-key]
   (reset! *clipboard* 
