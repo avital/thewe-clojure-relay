@@ -15,8 +15,8 @@
 			    t# \newline \newline)))))
 
 (defn-log log-info [title x]
-  (comment (append-spit "/home/avital/swank/log/events"
-			(str (current-time) \newline title \newline (pprn-str x) \newline)))
+  (append-spit "/home/avital/swank/log/operations"
+	       (str (current-time) \newline title \newline (pprn-str x) \newline))
   x)
 
 (defn-log answer-wave [events-map]
@@ -25,7 +25,7 @@
 			   ((ns-resolve 'we
 					(read-string
 					 ((read-json (events-map "proxyingFor")) "action"))) 
-			    (log-info "Events" events-map))))))
+			    events-map)))))
 
 (def js-snippet 
      "modeChanged = function(lastMode, newMode) {
@@ -118,6 +118,8 @@
 				(try (eval (read-string (subs (:content rep-op) start end)))
 				     (catch Throwable t []))))))))))
 
+(def foo run-function-do-operations)
+
 (defn-log echo-pp [s]
   (echo (pprn-str s)))
 
@@ -149,7 +151,7 @@
 (defn-log remember-gadget-key! [rep-key]
   (reset! *clipboard* 
 	  {:source-key rep-key 
-	   :rep-loc *event-context* 
+	   :rep-loc (:rep-loc *event-context*) 
 	   :subkeys (for [key (keys (:gadget-state *event-context*)) 
 			  :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
 		      (.replace key rep-key ""))})
