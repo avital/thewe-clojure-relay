@@ -1,4 +1,5 @@
 (ns we
+  (:use clojure.contrib.core)
   (:use clojure.contrib.duck-streams)
   (:use compojure)
   (:use clojure.set)
@@ -272,8 +273,48 @@
   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
+
+
+
+
+
+
+(defn dissoc-in
+  "Dissociates an entry from a nested associative structure returning a new
+nested structure. keys is a sequence of keys. Any empty maps that result
+will not be present in the new structure."
+  [m [k & ks :as keys]]
+  (if ks
+    (if-let [nextmap (get m k)]
+      (let [newmap (dissoc-in nextmap ks)]
+        (if (seq newmap)
+          (assoc m k newmap)
+          (dissoc m k)))
+      m)
+    (dissoc m k)))
+
+(def op-map-path ["property" "properties" "map"])
+
+(defn-log unite-gadget-chunk [ops]
+  (assoc-in (first ops) op-map-path
+	    (apply merge (for [op ops] (get-in op op-map-path)))))
+
+(defn-log op-skeleton [op]
+  (dissoc-in op op-map-path))
+
+(defn-log partition-by-func [coll f]
+  (let [skeletons (into #{} (map f coll))]
+    (for [skeleton skeletons]
+      (for [x coll :when (= (f x) skeleton)] x))))
+
+(defn-log find-gadget-chunks [ops]
+  (partition-by-func ops op-skeleton))
+
+(defn-log unite-gadget-modifications [ops]
+  (for [chunk (find-gadget-chunks ops)] (unite-gadget-chunk chunk)))
+
 (defn-log do-replication-by-json [events-map]
-   (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
+  (wrap-json-operations-with-bundle (unite-gadget-modifications (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))))
 
 (defn-log view-dev-and-do-replication [events-map]
  (wrap-json-operations-with-bundle (concat (view-dev events-map) (do-replication-by-json events-map))))
