@@ -105,10 +105,14 @@
 	     :loc-type "blip"
 	     :range (log (annotation "range")))]))
 
+(defn sfirst [x]
+  (if-let [result (first x)]
+    result
+    []))
 
 (defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
   (wrap-json-operations-with-bundle
-    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
+    (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
      (iterate-events events-map "DOCUMENT_CHANGED"     
 		     (apply concat 
 			    (for [annotation (log (:annotations rep-op)) 		  
