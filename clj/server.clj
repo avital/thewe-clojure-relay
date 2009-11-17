@@ -192,6 +192,14 @@
 (defn-log containing-rep-class [rep-loc]
   (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
 
+(defn-log current-rep-class []
+  (containing-rep-class (*event-context* :rep-loc)))
+
+(defn-log gadget-rep-class [key]
+  (containing-rep-class (assoc (*event-context* :rep-loc)
+			   :type "gadget" :key key)))
+
+
 (defn-log add-to-class [partition class el] 
   (conj (disj partition class) (conj class el)))
 
