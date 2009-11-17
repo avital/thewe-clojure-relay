@@ -1,4 +1,5 @@
 (ns we
+  (:use clojure.contrib.core)
   (:use clojure.contrib.duck-streams)
   (:use compojure)
   (:use clojure.set)
@@ -105,10 +106,14 @@
 	     :loc-type "blip"
 	     :range (log (annotation "range")))]))
 
+(defn sfirst [x]
+  (if-let [result (first x)]
+    result
+    []))
 
 (defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
   (wrap-json-operations-with-bundle
-    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
+    (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
      (iterate-events events-map "DOCUMENT_CHANGED"     
 		     (apply concat 
 			    (for [annotation (log (:annotations rep-op)) 		  
@@ -190,6 +195,14 @@
 (defn-log containing-rep-class [rep-loc]
   (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
 
+(defn-log current-rep-class []
+  (containing-rep-class (*event-context* :rep-loc)))
+
+(defn-log gadget-rep-class [key]
+  (containing-rep-class (assoc (*event-context* :rep-loc)
+			   :type "gadget" :key key)))
+
+
 (defn-log add-to-class [partition class el] 
   (conj (disj partition class) (conj class el)))
 
@@ -239,7 +252,7 @@
     (mapcat rep-op-to-operations   
 	    [{:rep-loc rep-loc :action "delete"}
 	     {:rep-loc rep-loc :action "append-gadget" :state
-	      {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
+	      {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
 	       "author" "avital@wavesandbox.com"
 	       "_view.js" ""
 	       "_view.html" ""
@@ -254,12 +267,46 @@
 	     {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
 	     {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])))
 
+(defn dissoc-in
+  "Dissociates an entry from a nested associative structure returning a new
+nested structure. keys is a sequence of keys. Any empty maps that result
+will not be present in the new structure."
+  [m [k & ks :as keys]]
+  (if ks
+    (if-let [nextmap (get m k)]
+      (let [newmap (dissoc-in nextmap ks)]
+        (if (seq newmap)
+          (assoc m k newmap)
+          (dissoc m k)))
+      m)
+    (dissoc m k)))
+
+(def op-map-path ["property" "properties" "map"])
+
+(defn-log unite-gadget-chunk [ops]
+  (assoc-in (first ops) op-map-path
+	    (apply merge (for [op ops] (get-in op op-map-path)))))
+
+(defn-log op-skeleton [op]
+  (dissoc-in op op-map-path))
+
+(defn-log partition-by-func [coll f]
+  (let [skeletons (into #{} (map f coll))]
+    (for [skeleton skeletons]
+      (for [x coll :when (= (f x) skeleton)] x))))
+
+(defn-log find-gadget-chunks [ops]
+  (partition-by-func ops op-skeleton))
+
+(defn-log unite-gadget-modifications [ops]
+  (for [chunk (find-gadget-chunks ops)] (unite-gadget-chunk chunk)))
+
 (defn-log view-dev [events-map]
   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log do-replication-by-json [events-map]
-  (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
+  (unite-gadget-modifications (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map)))))
 
 (defn-log view-dev-and-do-replication [events-map]
  (wrap-json-operations-with-bundle (concat (view-dev events-map) (do-replication-by-json events-map))))

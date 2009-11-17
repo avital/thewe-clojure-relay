@@ -225,7 +225,7 @@
       {"type" "GADGET",
        "properties" {"javaClass" "java.util.HashMap",
 		     "map" {(:key rep-loc) (:content rep-op)
-			    "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}},
+			    "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"}},
        "javaClass" "com.google.wave.api.Gadget"},
       "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"}]))
 
