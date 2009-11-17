@@ -137,7 +137,6 @@
 	     :loc-type "blip"
 	     :content  (str \newline s))]))
 
-
 (defn-log identify-this-blip []
   (echo-pp (:rep-loc *event-context*)))
 
@@ -148,7 +147,6 @@
 	     :loc-type "blip"
 	     :child-blip-id "new-blip-id"
 	     :content (str "hi!"))]))
-
 
 (defn burp-js [] (echo js-snippet))
 (defn burp-html [] (echo html-snippet))
@@ -186,7 +184,7 @@
 	   :rep-loc (:rep-loc *event-context*) 
 	   :subkeys (for [key (keys (:gadget-state *event-context*)) 
 			  :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
-		      (.replace key rep-key ""))})
+		      (.replaceFirst key rep-key ""))}) ; this never happened
   (echo "ok!"))
 
 (defn-log containing-rep-class [rep-loc]
@@ -261,7 +259,7 @@
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log do-replication-by-json [events-map]
-   (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
+  (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
 
 (defn-log view-dev-and-do-replication [events-map]
  (wrap-json-operations-with-bundle (concat (view-dev events-map) (do-replication-by-json events-map))))
