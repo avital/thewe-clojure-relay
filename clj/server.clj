@@ -17,7 +17,7 @@
   `(try ~expr 
 	(catch Throwable t#
 	  (log-exception t#)
-	  (wrap-json-operations-with-bundle []))))
+	  (operation-bundle-json []))))
 
 (defn-log log-info [title x]
   (append-spit "/home/avital/swank/log/operations"
@@ -27,10 +27,10 @@
 (defn-log answer-wave [events-map]
   (json-str
    (log-info "Operations" (wave-attempt
-			   ((ns-resolve 'we
-					(read-string
-					 ((read-json (events-map "proxyingFor")) "action"))) 
-			    events-map)))))
+			   (operation-bundle-json ((ns-resolve 'we
+							       (read-string
+								((read-json (events-map "proxyingFor")) "action"))) 
+						   events-map))))))
 
 (def js-snippet 
      "modeChanged = function(lastMode, newMode) {
@@ -77,10 +77,10 @@
 		   (.contains events "BLIP_SUBMITTED")
 		   (.contains events "WAVELET_SELF_ADDED"))
 	     (answer-wave (read-json (params :events)))
-	     (json-str (wrap-json-operations-with-bundle [])))))))
+	     (json-str (operation-bundle-json [])))))))
 
 
-(def *event-context*)
+(def *ctx*)
 
 (defmacro iterate-events [events listen-to for-args]
   `(let [~'modified-blip-ids
@@ -94,17 +94,19 @@
 		 ~'blip-annotations (dig ~'blip-data "annotations" "list")		 
 		 ~'rep-loc {:type "blip"  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId")}
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
-		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})
-		 ~'rep-op {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}]] 
-       (binding [~'*event-context* ~'rep-op] ~for-args))))
+		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] 
+       (binding [~'*ctx* {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}] ~for-args))))
 
 
 (defn-log delete-annotation [annotation]
-  (mapcat rep-op-to-operations  
-	  [(assoc *event-context*
-	     :action "delete-annotation"
-	     :loc-type "blip"
-	     :range (log (annotation "range")))]))
+  (delete-annotation-op (:rep-loc *ctx*) 
+	 (dig annotation "range" "start")
+	 (dig annotation "range" "end")))
+
+(defn-log add-annotation [annotation]
+  (add-annotation-op (:rep-loc *ctx*) 
+	 (dig annotation "range" "start")
+	 (dig annotation "range" "end")))
 
 (defn sfirst [x]
   (if-let [result (first x)]
@@ -112,21 +114,20 @@
     []))
 
 (defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
-  (wrap-json-operations-with-bundle
-    (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
-     (iterate-events events-map "DOCUMENT_CHANGED"     
-		     (apply concat 
-			    (for [annotation (log (:annotations rep-op)) 		  
-				  :when (not= -1 (dig annotation "range" "start"))
-				  :when (= "we/eval" (annotation "name"))
-				  :let [start (dig annotation "range" "start") 
-					end (dig annotation "range" "end")]] 
-			      (binding [*event-context* (assoc *event-context* :cursor end)]
-			       (concat
-				(delete-annotation annotation)
-				(try (eval (read-string (subs (:content rep-op) start end)))
-				     (catch Throwable t 
-				       (log-exception t) (echo t)))))))))))
+  (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
+   (iterate-events events-map "DOCUMENT_CHANGED"     
+		   (apply concat 
+			  (for [annotation (log (:annotations *ctx*)) 		  
+				:when (not= -1 (dig annotation "range" "start"))
+				:when (= "we/eval" (annotation "name"))
+				:let [start (dig annotation "range" "start") 
+				      end (dig annotation "range" "end")]] 
+			    (binding [*ctx* (assoc *ctx* :cursor end)]
+			      (concat
+			       (delete-annotation annotation)
+			       (try (eval (read-string (subs (:content *ctx*) start end)))
+				    (catch Throwable t 
+				      (log-exception t) (echo t))))))))))
 
 
 
@@ -136,22 +137,13 @@
   (echo (pprn-str s)))
 
 (defn-log echo [s]
-  (mapcat rep-op-to-operations 
-	  [(assoc *event-context*
-	     :action "insert"
-	     :loc-type "blip"
-	     :content  (str \newline s))]))
+  (document-insert-op (:rep-loc *ctx*) (:cursor *ctx*) (str \newline s)))
 
 (defn-log identify-this-blip []
-  (echo-pp (:rep-loc *event-context*)))
+  (echo-pp (:rep-loc *ctx*)))
 
 (defn-log create-child-blip [] 
-  (mapcat rep-op-to-operations  
-	  [(assoc *event-context*
-	     :action "create-child-blip"
-	     :loc-type "blip"
-	     :child-blip-id "new-blip-id"
-	     :content (str "hi!"))]))
+  (blip-create-child-ops (:rep-loc *ctx*) "" (str (rand))))
 
 (defn burp-js [] (echo js-snippet))
 (defn burp-html [] (echo html-snippet))
@@ -160,34 +152,21 @@
 (def *other-wave* (atom nil))
 
 (defn-log remember-wave! []
-  (reset! *other-wave* *event-context*)
+  (reset! *other-wave* *ctx*)
   (echo "Remembered"))
 
 (defmacro on-other-wave [expr]
-  `(binding [*event-context* @*other-wave*]
+  `(binding [*ctx* @*other-wave*]
      ~expr))
 
 (defn-log modify-ggg [key val]
-  [{"blipId" (dig *event-context* :rep-loc :blip-id),
-    "index" -1,
-    "waveletId" (dig *event-context* :rep-loc :wavelet-id),
-    "javaClass" "com.google.wave.api.impl.OperationImpl",
-    "waveId" (dig *event-context* :rep-loc :wave-id),
-    "property"
-    {"type" "GADGET",
-     "properties"
-     {"javaClass" "java.util.HashMap",
-      "map"
-      {key val,
-       "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}},
-     "javaClass" "com.google.wave.api.Gadget"},
-    "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"}])
+  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}))
 
 (defn-log remember-gadget-key! [rep-key]
   (reset! *clipboard* 
 	  {:source-key rep-key 
-	   :rep-loc (:rep-loc *event-context*) 
-	   :subkeys (for [key (keys (:gadget-state *event-context*)) 
+	   :rep-loc (:rep-loc *ctx*) 
+	   :subkeys (for [key (keys (:gadget-state *ctx*)) 
 			  :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
 		      (.replaceFirst key rep-key ""))}) ; this never happened
   (echo "ok!"))
@@ -196,12 +175,11 @@
   (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
 
 (defn-log current-rep-class []
-  (containing-rep-class (*event-context* :rep-loc)))
+  (containing-rep-class (*ctx* :rep-loc)))
 
 (defn-log gadget-rep-class [key]
-  (containing-rep-class (assoc (*event-context* :rep-loc)
+  (containing-rep-class (assoc (*ctx* :rep-loc)
 			   :type "gadget" :key key)))
-
 
 (defn-log add-to-class [partition class el] 
   (conj (disj partition class) (conj class el)))
@@ -226,11 +204,13 @@
   (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
     (replicate-replocs!     
      (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
-     (assoc (:rep-loc *event-context*) :type "gadget" :key (str rep-key subkey))))
+     (assoc (:rep-loc *ctx*) :type "gadget" :key (str rep-key subkey))))
   (echo "replicated!"))
 
+
+
 (defn-log create-view-dev-replication! []
-  (let [rep-loc (:rep-loc *event-context*)]
+  (let [rep-loc (:rep-loc *ctx*)]
     (replicate-replocs!
      (assoc rep-loc :type "gadget" :key "_view.js")
      (dissoc (assoc rep-loc :subcontent "// js") :blip-id))
@@ -242,30 +222,28 @@
     (replicate-replocs!
      (assoc rep-loc :type "gadget" :key "_view.css")
      (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)))
-  
-  (mapcat rep-op-to-operations []))
+[])
 
 ; @TODO this has swap! here -  is there a way to prevent it?
-(defn view-dev-this-blip []
+(defn-log view-dev-this-blip []
   (create-view-dev-replication!)
-  (let [rep-loc (:rep-loc *event-context*)]
-    (mapcat rep-op-to-operations   
-	    [{:rep-loc rep-loc :action "delete"}
-	     {:rep-loc rep-loc :action "append-gadget" :state
-	      {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
-	       "author" "avital@wavesandbox.com"
-	       "_view.js" ""
-	       "_view.html" ""
-	       "_view.css" ""
-	       "_rep-loc.waveId" (rep-loc :wave-id)
-	       "_rep-loc.waveletId" (rep-loc :wavelet-id)
-	       "_rep-loc.blipId" (rep-loc :blip-id)}}
-	     {:rep-loc rep-loc :action "create-child-blip" :child-blip-id "html"}
-	     {:rep-loc (assoc rep-loc :blip-id "html") :action "create-child-blip" :child-blip-id "css"}
-	     {:rep-loc (assoc rep-loc :blip-id "css") :action "create-child-blip" :child-blip-id "js"}
-	     {:rep-loc (assoc rep-loc :blip-id "html") :content "<!-- html -->"}
-	     {:rep-loc (assoc rep-loc :blip-id "css") :content "/* css */"}
-	     {:rep-loc (assoc rep-loc :blip-id "js") :content "// js"}])))
+  (let [rep-loc (:rep-loc *ctx*)]
+    (concat 
+     (append-gadget-op rep-loc 
+		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
+			"author" "avital@wavesandbox.com"
+			"_view.js" ""
+			"_view.html" ""
+			"_view.css" ""
+			"_rep-loc.waveId" (rep-loc :wave-id)
+			"_rep-loc.waveletId" (rep-loc :wavelet-id)
+			"_rep-loc.blipId" (rep-loc :blip-id)})
+     (blip-create-child-ops rep-loc "" "html")
+     (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
+     (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
+     (document-delete-append (assoc rep-loc :blip-id "html") "<!-- html -->")
+     (document-delete-append (assoc rep-loc :blip-id "css")  "/* css */")
+     (document-delete-append (assoc rep-loc :blip-id "js")   "// js"))))
 
 (defn dissoc-in
   "Dissociates an entry from a nested associative structure returning a new
@@ -287,7 +265,7 @@ will not be present in the new structure."
   (assoc-in (first ops) op-map-path
 	    (apply merge (for [op ops] (get-in op op-map-path)))))
 
-(defn-log op-skeleton [op]
+(defn-log op-gadget-skeleton [op]
   (dissoc-in op op-map-path))
 
 (defn-log partition-by-func [coll f]
@@ -296,7 +274,7 @@ will not be present in the new structure."
       (for [x coll :when (= (f x) skeleton)] x))))
 
 (defn-log find-gadget-chunks [ops]
-  (partition-by-func ops op-skeleton))
+  (partition-by-func ops op-gadget-skeleton))
 
 (defn-log unite-gadget-modifications [ops]
   (for [chunk (find-gadget-chunks ops)] (unite-gadget-chunk chunk)))
@@ -306,12 +284,7 @@ will not be present in the new structure."
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log do-replication-by-json [events-map]
-  (unite-gadget-modifications (mapcat rep-op-to-operations (do-replication @rep-rules (incoming-map-to-rep-ops events-map)))))
+  (unite-gadget-modifications (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
 
 (defn-log view-dev-and-do-replication [events-map]
- (wrap-json-operations-with-bundle (concat (view-dev events-map) (do-replication-by-json events-map))))
-
-;(concat (view-dev events-map) (do-replication-by-json events-map)))
-
-
-
+  (concat (view-dev events-map) (do-replication-by-json events-map)))
