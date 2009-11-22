@@ -110,8 +110,11 @@
 (defmacro fn-log [args & rest]
   `(fn ~args (logify '-anonymous- ~args ~rest)))
 
-(defmacro defn-log [name args & rest]
-  `(defn ~name ~args (logify ~name ~args ~rest)))
+(defmacro defn-log [name & fdecl]
+  (let [other (if (string? (first fdecl))
+	       (rest fdecl)
+	       fdecl)]
+    `(defn ~name ~args (logify ~name ~(first other) ~(rest other)))))
 
 (def *tests-file* "/home/avital/swank/tests/tests.clj")
 
