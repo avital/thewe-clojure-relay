@@ -1,6 +1,7 @@
 (ns we
   (:use clojure.contrib.pprint)
-  (:use clojure.contrib.duck-streams))
+  (:use clojure.contrib.duck-streams)
+  (:import java.util.Date))
 
 (def *call-log* (atom {}))
 
@@ -125,6 +126,26 @@
   (seq (for [test @*unit-tests*]
 	 (append-spit *tests-file* (prn-str test))))
   (reset! *unit-tests* {}))
+
+(defn current-time []
+  (. (new Date) (toString)))
+
+(defn log-exception [t]
+  (append-spit "/home/avital/swank/log/exceptions"
+	       (str (current-time) \newline 
+		    t \newline \newline)))
+
+(defmacro wave-attempt [expr]
+  `(try ~expr 
+	(catch Throwable t#
+	  (log-exception t#)
+	  (operation-bundle-json []))))
+
+(defn-log log-info [title x]
+  (append-spit "/home/avital/swank/log/operations"
+	       (str (current-time) \newline title \newline (pprn-str x) \newline))
+  x)
+
 
 
 ; tests
