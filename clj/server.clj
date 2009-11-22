@@ -172,7 +172,7 @@
   (echo "ok!"))
 
 (defn-log containing-rep-class [rep-loc]
-  (first (for [rep-class @rep-rules :when (some #{rep-loc} rep-class)] rep-class)))
+  (first (for [rep-class @*rep-rules* :when (some #{rep-loc} rep-class)] rep-class)))
 
 (defn-log current-rep-class []
   (containing-rep-class (*ctx* :rep-loc)))
@@ -188,16 +188,16 @@
   (let [rc1 (containing-rep-class r1) rc2 (containing-rep-class r2)]
     (cond
       (and (not rc1) (not rc2))  ; when both are not in rep-classes
-      (swap! rep-rules conj #{r1 r2})
+      (swap! *rep-rules* conj #{r1 r2})
 
       (and rc1 (not rc2))
-      (swap! rep-rules add-to-class rc1 r2)
+      (swap! *rep-rules* add-to-class rc1 r2)
 
       (and rc2 (not rc1))
-      (swap! rep-rules add-to-class rc2 r1)
+      (swap! *rep-rules* add-to-class rc2 r1)
 
       (and (and rc1 rc2) (not= rc1 rc2))
-      (swap! rep-rules #(conj (disj % rc1 rc2) (union rc1 rc2))))))
+      (swap! *rep-rules* #(conj (disj % rc1 rc2) (union rc1 rc2))))))
 
 
 (defn-log replicate-gadget-key! [rep-key]
@@ -284,7 +284,7 @@ will not be present in the new structure."
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log do-replication-by-json [events-map]
-  (unite-gadget-modifications (do-replication @rep-rules (incoming-map-to-rep-ops events-map))))
+  (unite-gadget-modifications (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map))))
 
 (defn-log view-dev-and-do-replication [events-map]
   (concat (view-dev events-map) (do-replication-by-json events-map)))

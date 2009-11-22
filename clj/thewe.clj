@@ -8,7 +8,7 @@
 ; ======= Atoms =======
 ; =====================
 
-(def rep-rules (atom #{}))
+(def *rep-rules* (atom #{}))
 
 ; =========================
 ; ======= Utilities =======
@@ -113,9 +113,6 @@
 ;                operations the robot will do
 
 
-; @todo - not nice to have fn here
-;(defmulti rep-op-to-operations
-;  (fn [rep-op] {:loc-type (dig rep-op :rep-loc :type) :action (rep-op :action)}))
 
 (defn-log op-skeleton [rep-loc] 
   (let [wave-id (:wave-id rep-loc)
@@ -156,6 +153,13 @@
      "index" -1,
      "property" (range-op-json start end),
      "type" "DOCUMENT_ANNOTATION_DELETE")])
+
+(defn-log add-annotation-op [rep-loc name start end]
+  [(assoc (op-skeleton rep-loc)
+     "index" -1,
+     "property" (annotation-op-json name start end value),
+     "type" "DOCUMENT_ANNOTATION_SET")])
+
 
 (defn-log add-annotation-ops [rep-loc name start end value]
   [(assoc (op-skeleton rep-loc)
