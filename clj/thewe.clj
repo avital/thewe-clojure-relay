@@ -308,13 +308,11 @@
 			    (binding [*ctx* (assoc *ctx* :cursor end)]
 			      (concat
 			       (delete-annotation annotation)
-			       (try (eval (read-string (subs (:content *ctx*) start end)))
+			       (try (log (eval (read-string (subs (:content *ctx*) start end))))
 				    (catch Throwable t 
 				      (log-exception t) (echo t))))))))))
 
 
-
-(def foo run-function-do-operations)
 
 (defn-log identify-this-blip []
   (echo-pp (:rep-loc *ctx*)))
@@ -326,6 +324,7 @@
 (defn burp-html [] (echo html-snippet))
 
 (def *clipboard* (atom nil))
+(def *last-clipboard* (atom nil))
 (def *other-wave* (atom nil))
 
 (defn-log remember-wave! []
@@ -336,16 +335,18 @@
   `(binding [*ctx* @*other-wave*]
      ~expr))
 
-(defn-log modify-ggg [key val]
-  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}))
+(defn-log modify-ggb [key val]
+  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"}))
 
 (defn-log remember-gadget-key! [rep-key]
   (reset! *clipboard* 
 	  {:source-key rep-key 
 	   :rep-loc (:rep-loc *ctx*) 
-	   :subkeys (for [key (keys (:gadget-state *ctx*)) 
+	   :subkeys (for [[key val] (:gadget-state *ctx*) 
 			  :when (or (= key rep-key) (.startsWith key (str rep-key ".")))]
-		      (.replaceFirst key rep-key ""))}) ; this never happened
+		      [(.replaceFirst key rep-key "") val])})
+ ; this never happened
+  (reset! *last-clipboard* @*clipboard*)
   (echo "ok!"))
 
 (defn-log containing-rep-class [rep-loc]
@@ -377,35 +378,66 @@
       (swap! *rep-rules* #(conj (disj % rc1 rc2) (union rc1 rc2))))))
 
 
+(defn submit-replication-delta [rep-key]
+  (we/gadget-submit-delta-ops (:rep-loc we/*ctx*) (into {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"} (for [[subkey val] (:subkeys @we/*last-clipboard*)] [(str rep-key subkey) val]))))
+
 (defn-log replicate-gadget-key! [rep-key]
-  (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] subkey subkeys] 
+  (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] [subkey _] subkeys] 
     (replicate-replocs!     
      (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
      (assoc (:rep-loc *ctx*) :type "gadget" :key (str rep-key subkey))))
-  (echo "replicated!"))
+  (add-string-and-eval (:rep-loc *ctx*) (str `(we/submit-replication-delta ~rep-key))))
 
+(defn-log c [key] 
+  (if (empty? @*clipboard*) 
+    (remember-gadget-key! key)
+    (let [ops (replicate-gadget-key! key)] (swap! *clipboard* empty) ops)))
 
-
-(defn-log create-view-dev-replication! []
+(defn-log create-view-dev-replication-generic! [suffix]
   (let [rep-loc (:rep-loc *ctx*)]
     (replicate-replocs!
      (assoc rep-loc :type "gadget" :key "_view.js")
-     (dissoc (assoc rep-loc :subcontent "// js") :blip-id))
+     (dissoc (assoc rep-loc :subcontent (str  "// " suffix "js")) :blip-id))
     
     (replicate-replocs!
      (assoc rep-loc :type "gadget" :key "_view.html")
-     (dissoc (assoc rep-loc :subcontent "<!-- html -->") :blip-id))
+     (dissoc (assoc rep-loc :subcontent (str "<!-- html" suffix " -->")) :blip-id))
     
     (replicate-replocs!
      (assoc rep-loc :type "gadget" :key "_view.css")
-     (dissoc (assoc rep-loc :subcontent "/* css */") :blip-id)))
+     (dissoc (assoc rep-loc :subcontent (str "/* css" suffix " */")) :blip-id)))
   [])
 
+(defn-log create-view-dev-replication [] (create-view-dev-replication-generic! ""))
+
 ; @TODO this has swap! here -  is there a way to prevent it?
-(defn-log view-dev-this-blip 
+(defn-log view-dev-this-blip-generic
   "suffix is what we add to the content of the created blips in order to later identify them for replication by subcontent" 
-  [& suffix]
-  (create-view-dev-replication!)
+  [suffix]
+  (create-view-dev-replication-generic! suffix)
+  (let [rep-loc (:rep-loc *ctx*)]
+    (concat 
+     (append-gadget-op rep-loc 
+		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
+			"author" "avital@wavesandbox.com"
+			"_view.js" "// js"
+			"_view.html" "<!-- html -->"
+			"_view.css" "/* css */"
+			"_rep-loc.waveId" (rep-loc :wave-id)
+			"_rep-loc.waveletId" (rep-loc :wavelet-id)
+			"_rep-loc.blipId" (rep-loc :blip-id)})
+     (blip-create-child-ops rep-loc "" "html")
+     (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
+     (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
+     (document-delete-append (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
+     (document-delete-append (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
+     (document-delete-append (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
+
+; @TODO this has swap! here -  is there a way to prevent it?
+(defn-log view-dev-this-blip-generic2
+  "suffix is what we add to the content of the created blips in order to later identify them for replication by subcontent" 
+  [suffix]
+  (create-view-dev-replication-generic! suffix)
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
      (append-gadget-op rep-loc 
@@ -414,24 +446,35 @@
 			"_view.js" ""
 			"_view.html" ""
 			"_view.css" ""
+			;"f1._view.html" ""
+			;"f1._view.css" ""
+			;"f1._view.js" ""
 			"_rep-loc.waveId" (rep-loc :wave-id)
 			"_rep-loc.waveletId" (rep-loc :wavelet-id)
 			"_rep-loc.blipId" (rep-loc :blip-id)})
      (blip-create-child-ops rep-loc "" "html")
      (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
      (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
-     (document-delete-append (assoc rep-loc :blip-id "html") (str "<!-- html" (first suffix) " -->"))
-     (document-delete-append (assoc rep-loc :blip-id "css") (str "/* css" (first suffix) " */"))
-     (document-delete-append (assoc rep-loc :blip-id "js") (str "// js" (first suffix))))))
+     (document-delete-append (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
+     (document-delete-append (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
+     (document-delete-append (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
+
+
+(defn-log view-dev-this-blip [] (view-dev-this-blip-generic ""))
+
+(defn-log add-string-and-eval [rep-loc str]
+  (concat
+   (document-insert-op rep-loc 0 str)
+   (add-annotation-ops rep-loc "we/eval" 0 (count str) "nothing")))
+
+;str-to-annotate "(concat((we/view-dev-this-blip-generic \"2\")(we/echo \"f1._view.html\")))"
 
 (defn-log view-dev-annotate-blip []
-  (create-view-dev-replication!)
-  (let [rep-loc (:rep-loc *ctx*)]
+  (let [rep-loc (:rep-loc *ctx*) 
+	str-to-annotate "(concat (we/view-dev-this-blip-generic2 \"2\") (we/c \"f1._view\"))"]
     (concat 
      (blip-create-child-ops rep-loc "" "view-dev")
-     (document-delete-append (assoc rep-loc :blip-id "view-dev") "(we/view-dev-this-blip)")
-     (add-annotation-ops (assoc rep-loc :blip-id "view-dev") "we/eval" 0 (+ 0 (count "(we/view-dev-this-blip)")) "nothing"))))
-
+     (add-string-and-eval (assoc rep-loc :blip-id "view-dev") str-to-annotate))))
 
 (def op-map-path ["property" "properties" "map"])
 
@@ -448,9 +491,9 @@ will not be present in the new structure."
   (if ks
     (if-let [nextmap (get m k)]
       (let [newmap (dissoc-in nextmap ks)]
-        (if (seq newmap)
-          (assoc m k newmap)
-          (dissoc m k)))
+        (if seq newmap
+	    (assoc m k newmap)
+	    (dissoc m k)))
       m)
     (dissoc m k)))
 
@@ -480,9 +523,15 @@ will not be present in the new structure."
 
 (defn-log crazy-shit [events-map]
   (concat 
-   (view-dev events-map)
+
    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-annotate-blip)))
+    (iterate-events events-map "WAVELET_SELF_ADDED"   (add-string-and-eval (:rep-loc *ctx*) "(we/c \"_view\")")))
+
+   (view-dev events-map)
+
+   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
+    (iterate-events events-map "WAVELET_SELF_ADDED"  (view-dev-annotate-blip)))
+      
    (do-replication-by-json events-map)))
 
 
