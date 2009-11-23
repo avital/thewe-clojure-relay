@@ -63,7 +63,8 @@
 	  standard-log-form
       
 	  (#{'let 'for 'clojure.core/let 'clojure.core/for} func)
-	  `(~func ~(second expr) (log ~(third expr))) 
+	  `(~func ~(second expr) ~@(for [clause (rest (rest expr))]
+				     `(log ~clause)))
       
 	  (or (special-symbol? func)
 	      (macro? expr))
