@@ -114,8 +114,9 @@
 (defmacro defn-log [name & fdecl]
   (let [other (if (string? (first fdecl))
 	       (rest fdecl)
-	       fdecl)]
-    `(defn ~name ~args (logify ~name ~(first other) ~(rest other)))))
+	       fdecl)
+	args (first other)]
+    `(defn ~name ~args (logify ~name ~args ~(rest other)))))
 
 (def *tests-file* "/home/avital/swank/tests/tests.clj")
 

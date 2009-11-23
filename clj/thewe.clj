@@ -2,7 +2,6 @@
   (:use clojure.contrib.json.read)
   (:use clojure.contrib.json.write)
   (:use clojure.set)
-  (:use clojure.contrib.core)
   (:use clojure.contrib.duck-streams)
   (:import java.util.Date))
 
@@ -435,6 +434,21 @@
 (defn-log unite-gadget-chunk [ops]
   (assoc-in (first ops) op-map-path
 	    (apply merge (for [op ops] (get-in op op-map-path)))))
+
+; From clojure.contrib.core. Not sure why I can't just use it.
+(defn dissoc-in
+  "Dissociates an entry from a nested associative structure returning a new
+nested structure. keys is a sequence of keys. Any empty maps that result
+will not be present in the new structure."
+  [m [k & ks :as keys]]
+  (if ks
+    (if-let [nextmap (get m k)]
+      (let [newmap (dissoc-in nextmap ks)]
+        (if (seq newmap)
+          (assoc m k newmap)
+          (dissoc m k)))
+      m)
+    (dissoc m k)))
 
 (defn-log op-gadget-skeleton [op]
   (dissoc-in op op-map-path))
