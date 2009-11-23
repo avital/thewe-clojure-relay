@@ -101,7 +101,7 @@
 (defmacro logify [name args rest]
   `(if *enable-logging*
      (let [result# 
-	   (binding [*log-path* (log-conj *log-path* '(~name ~@args))]
+	   (binding [*log-path* (log-conj *log-path* (str "Function call: " '(~name ~@args)))]
 	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
        (if (and *record-unit-tests* (empty? *log-path*))
 	 (let [expr# `(~'~name ~@~args)]
@@ -185,6 +185,14 @@
 
   (f 2 3)
   
+
+  (defn-log add [a b] (+ a b))  
+  (def *enable-logging* true)
+  (swap! *call-log* empty)
+  (def x 2)
+  (def y 3)
+  (log (add x y))
+  @*call-log*
   
   (def x 2)
   
