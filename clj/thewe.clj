@@ -156,18 +156,11 @@
      "property" (range-op-json start end),
      "type" "DOCUMENT_ANNOTATION_DELETE")])
 
-(defn-log add-annotation-op [rep-loc name start end value]
-  [(assoc (op-skeleton rep-loc)
-     "index" -1,
-     "property" (annotation-op-json name start end value),
-     "type" "DOCUMENT_ANNOTATION_SET")])
-
-
 (defn-log add-annotation-ops [rep-loc name start end value]
   [(assoc (op-skeleton rep-loc)
-     "index" -1,
+     "index" 0,
      "property" (annotation-op-json name start end value),
-     "type" "DOCUMENT_ANNOTATION_DELETE")])
+     "type" "DOCUMENT_ANNOTATION_SET")])
 
 ; @todo: what is the difference between using "append" and :append?
 
@@ -226,12 +219,12 @@
 
 
 (defmethod update-rep-loc-ops "gadget" [rep-loc content]
-  (gadget-submit-delta-ops rep-loc 
-			   {(:key rep-loc) content
-			    "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"}))
+  (log (gadget-submit-delta-ops rep-loc 
+				{(:key rep-loc) content
+				 "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"})))
 
 (defmethod update-rep-loc-ops "blip" [rep-loc content]
-  (document-delete-append rep-loc content))
+  (log (document-delete-append rep-loc content)))
 
 
 ; =============================
@@ -410,7 +403,9 @@
   [])
 
 ; @TODO this has swap! here -  is there a way to prevent it?
-(defn-log view-dev-this-blip []
+(defn-log view-dev-this-blip 
+  "suffix is what we add to the content of the created blips in order to later identify them for replication by subcontent" 
+  [& suffix]
   (create-view-dev-replication!)
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
@@ -426,9 +421,18 @@
      (blip-create-child-ops rep-loc "" "html")
      (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
      (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
-     (document-delete-append (assoc rep-loc :blip-id "html") "<!-- html -->")
-     (document-delete-append (assoc rep-loc :blip-id "css")  "/* css */")
-     (document-delete-append (assoc rep-loc :blip-id "js")   "// js"))))
+     (document-delete-append (assoc rep-loc :blip-id "html") (str "<!-- html" (first suffix) " -->"))
+     (document-delete-append (assoc rep-loc :blip-id "css") (str "/* css" (first suffix) " */"))
+     (document-delete-append (assoc rep-loc :blip-id "js") (str "// js" (first suffix))))))
+
+(defn-log view-dev-annotate-blip []
+  (create-view-dev-replication!)
+  (let [rep-loc (:rep-loc *ctx*)]
+    (concat 
+     (blip-create-child-ops rep-loc "" "view-dev")
+     (document-delete-append (assoc rep-loc :blip-id "view-dev") "(we/view-dev-this-blip)")
+     (add-annotation-ops (assoc rep-loc :blip-id "view-dev") "we/eval" 0 (+ 0 (count "(we/view-dev-this-blip)")) "nothing"))))
+
 
 (def op-map-path ["property" "properties" "map"])
 
@@ -459,4 +463,12 @@
 
 (defn-log view-dev-and-do-replication [events-map]
   (concat (view-dev events-map) (do-replication-by-json events-map)))
+
+(defn-log crazy-shit [events-map]
+  (concat 
+   (view-dev events-map)
+   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
+    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-annotate-blip)))
+   (do-replication-by-json events-map)))
+
 
