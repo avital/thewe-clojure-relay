@@ -182,11 +182,18 @@
      "property" (gadget-op-json gadget-state),
      "type" "DOCUMENT_ELEMENT_APPEND")])
 
+(defn-log gadget-submit-delta-1-op [rep-loc state]
+  (assoc (op-skeleton rep-loc)
+    "index" -1,
+    "property" (gadget-op-json state),
+    "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"))
+
 (defn-log gadget-submit-delta-ops [rep-loc state]
-  [(assoc (op-skeleton rep-loc)
-     "index" -1,
-     "property" (gadget-op-json state),
-     "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS")])
+  [(gadget-submit-delta-1-op rep-loc 
+			     (into {} 
+				   (for [[key val] state] 
+				     [key (if (= key "url") val "x")]))) 
+   (gadget-submit-delta-1-op rep-loc state)])
 
 (defn-log blip-data-op-json [rep-loc content]
   (assoc (op-skeleton rep-loc)
@@ -471,7 +478,7 @@
 
 (defn-log view-dev-annotate-blip []
   (let [rep-loc (:rep-loc *ctx*) 
-	str-to-annotate "(concat (we/view-dev-this-blip-generic2 \"2\") (we/c \"f1._view\"))"]
+	str-to-annotate "(we/view-dev-this-blip-generic2 \"2\")"]
     (concat 
      (blip-create-child-ops rep-loc "" "view-dev")
      (add-string-and-eval (assoc rep-loc :blip-id "view-dev") str-to-annotate))))
@@ -516,22 +523,47 @@ will not be present in the new structure."
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log do-replication-by-json [events-map]
-  (unite-gadget-modifications (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map))))
+  (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map)))
 
 (defn-log view-dev-and-do-replication [events-map]
   (concat (view-dev events-map) (do-replication-by-json events-map)))
 
+(defn-log handle-to-key []
+  (if-let [to-key ((:gadget-state *ctx*) "to-key")]
+   (when (not= to-key "*")
+      (reset! *clipboard* {:rep-loc (:rep-loc *ctx*) :to-key to-key})
+      (gadget-submit-delta-ops (:rep-loc *ctx*) {"to-key" "*" "url" ((:gadget-state *ctx*) "url")}))))
+
+
+(defn-log handle-from-key []
+  (if-let [from-key ((:gadget-state *ctx*) "from-key")]  
+    (if (not= from-key "*")
+      (when-let [{to-key :to-key source-rep-loc :rep-loc} @*clipboard*]
+	(doseq [[key val] (:gadget-state *ctx*) 
+		:when (or (= key from-key) (.startsWith key (str from-key ".")))]
+	  (replicate-replocs! (assoc source-rep-loc :type "gadget" :key (.replaceFirst key from-key to-key))
+			      (assoc (:rep-loc *ctx*) :type "gadget" :key key)))
+	(gadget-submit-delta-ops (:rep-loc *ctx*) {"from-key" "*" "url" ((:gadget-state *ctx*) "url")})))))
+
+(defn-log gadget-rep "TODO" []
+  (concat
+   (handle-to-key)
+   (handle-from-key)))
+
+
 (defn-log crazy-shit [events-map]
   (concat 
-
-   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-    (iterate-events events-map "WAVELET_SELF_ADDED"   (add-string-and-eval (:rep-loc *ctx*) "(we/c \"_view\")")))
-
+   
    (view-dev events-map)
-
+   
    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
     (iterate-events events-map "WAVELET_SELF_ADDED"  (view-dev-annotate-blip)))
-      
+   
+   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
+    (iterate-events events-map "BLIP_SUBMITTED"  (gadget-rep)))
+   
    (do-replication-by-json events-map)))
+
+
 
 
