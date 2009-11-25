@@ -21,13 +21,25 @@
 
 (def log-list (atom []))
 
-(defn filter-keys [map keys]
-  (into {} (filter #(some #{(key %)} keys) map)))
+; From clojure.contrib.core. Not sure why I can't just use it.
+(defn dissoc-in
+  "Dissociates an entry from a nested associative structure returning a new
+nested structure. keys is a sequence of keys. Any empty maps that result
+will not be present in the new structure."
+  [m [k & ks :as keys]]
+  (if ks
+    (if-let [nextmap (get m k)]
+      (let [newmap (dissoc-in nextmap ks)]
+        (if (seq newmap)
+	    (assoc m k newmap)
+	    (dissoc m k)))
+      m)
+    (dissoc m k)))
 
 
-; =============================
-; ======= Logical Layer =======
-; =============================
+; =========================================
+; ======= Logical Replication Layer =======
+; =========================================
 
 ; Data structures:
 ; ----------------
@@ -42,8 +54,7 @@
 
 (defn-log equal-rep-loc [r1 r2]
   (let [rep-loc-keys [:wave-id :wavelet-id :blip-id]] 
-    (= (filter-keys r1 rep-loc-keys) (filter-keys r2 rep-loc-keys))))
-
+    (= (select-keys r1 rep-loc-keys) (select-keys r2 rep-loc-keys))))
 
 (defmulti update-rep-loc-ops
   (fn-log [rep-loc content] (:type rep-loc)))
@@ -63,6 +74,7 @@
 		      rep-class rep-rules :when (some (partial match-rep-loc rep-op) rep-class)
 		      rep-loc rep-class :when (and (rep-loc :blip-id) (not= rep-loc (:rep-loc rep-op)))]
 		  (update-rep-loc-ops rep-loc (:content rep-op)))))
+
 
 ; ===============================================
 ; ======= Google Wave Incoming JSON Layer =======
@@ -86,10 +98,7 @@
           {:rep-loc (assoc basic-rep-loc :type "gadget" :key k) :content v}))
 
 					; there is no gadget
-      [{:rep-loc (assoc basic-rep-loc :type "blip") :content (blip-data "content")}]
-      )
-    )
-  )
+      [{:rep-loc (assoc basic-rep-loc :type "blip") :content (blip-data "content")}])))
 
 (defn-log incoming-map-to-rep-ops [incoming]
   (let [modified-blip-ids
@@ -113,8 +122,6 @@
 ; outgoing-map:  Some crazy Google format of a map that contains information on which
 ;                operations the robot will do
 
-
-
 (defn-log op-skeleton [rep-loc] 
   (let [wave-id (:wave-id rep-loc)
 	wavelet-id (:wavelet-id rep-loc)
@@ -124,7 +131,7 @@
      "blipId" blip-id
      "javaClass"  "com.google.wave.api.impl.OperationImpl"}))
 
-(defn-log document-delete-append [rep-loc content]
+(defn-log document-delete-append-ops [rep-loc content]
   [(assoc (op-skeleton rep-loc)
      "index"  -1,
       "property"  nil,
@@ -134,7 +141,7 @@
       "property"  content,
       "type"  "DOCUMENT_APPEND")])
 
-(defn-log document-delete-op [rep-loc]
+(defn-log document-delete-ops [rep-loc]
   [(assoc (op-skeleton rep-loc)
      "index"  -1,
      "property"  nil,
@@ -149,7 +156,7 @@
    "name" name,
    "range" (range-op-json start end)})
 
-(defn-log delete-annotation-op [rep-loc start end]
+(defn-log delete-annotation-ops [rep-loc start end]
   [(assoc (op-skeleton rep-loc)
      "index" -1,
      "property" (range-op-json start end),
@@ -163,7 +170,7 @@
 
 ; @todo: what is the difference between using "append" and :append?
 
-(defn-log document-insert-op [rep-loc cursor content]
+(defn-log document-insert-ops [rep-loc cursor content]
   [(assoc (op-skeleton rep-loc) 
      "index"  cursor,
      "property"  content,
@@ -176,7 +183,7 @@
     "javaClass" "java.util.HashMap"},
    "type" "GADGET"})
 
-(defn-log append-gadget-op [rep-loc gadget-state]
+(defn-log append-gadget-ops [rep-loc gadget-state]
   [(assoc (op-skeleton rep-loc)
      "index" 0,
      "property" (gadget-op-json gadget-state),
@@ -230,39 +237,17 @@
 				 "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"})))
 
 (defmethod update-rep-loc-ops "blip" [rep-loc content]
-  (log (document-delete-append rep-loc content)))
+  (log (document-delete-append-ops rep-loc content)))
+
+(defn-log add-string-and-eval-ops [rep-loc str]
+  (concat
+   (document-insert-ops rep-loc 0 str)
+   (add-annotation-ops rep-loc "we/eval" 0 (count str) "nothing")))
 
 
 ; =============================
 ; ======= Harness Layer =======
 ; =============================
-
-(defn-log answer-wave [events-map]
-  (json-str
-   (log-info "Operations" (wave-attempt
-			   (operation-bundle-json ((ns-resolve 'we
-							       (read-string
-								((read-json (events-map "proxyingFor")) "action"))) 
-						   events-map))))))
-
-(def js-snippet 
-     "modeChanged = function(lastMode, newMode) {
-\tif (lastMode == wave.Mode.EDIT) {
-\t\twe.state.set('value', $('edit').get('value'));
-\t}
-
-\t// Here are the numeric values of the different modes: {UNKNOWN:0, VIEW:1, EDIT:2, DIFF_ON_OPEN:3, PLAYBACK:4};
-\t// An array that associates for each mode the element that should be displayed
-\tvar viewsByMode = [$('view'), $('view'), $('edit'), $('view'), $('view')]
-
-\tviewsByMode.each(function(el) {
-\t\tel.setStyle('display', 'none')
-\t})
-
-\tviewsByMode[newMode].setStyle('display', 'inline')
-}")
-
-(def html-snippet "<span wecursor='value'>\t<span id='view' wethis=1></span>\t<input id='edit' wethis=1></input></span>")
 
 (def *ctx*)
 
@@ -281,14 +266,8 @@
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] 
        (binding [~'*ctx* {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}] ~for-args))))
 
-
 (defn-log delete-annotation [annotation]
-  (delete-annotation-op (:rep-loc *ctx*) 
-	 (dig annotation "range" "start")
-	 (dig annotation "range" "end")))
-
-(defn-log add-annotation [annotation]
-  (add-annotation-op (:rep-loc *ctx*) 
+  (delete-annotation-ops (:rep-loc *ctx*) 
 	 (dig annotation "range" "start")
 	 (dig annotation "range" "end")))
 
@@ -298,7 +277,7 @@
     []))
 
 (defn-log echo [s]
-  (document-insert-op (:rep-loc *ctx*) (:cursor *ctx*) (str \newline s)))
+  (document-insert-ops (:rep-loc *ctx*) (:cursor *ctx*) (str \newline s)))
 
 (defn-log echo-pp [s]
   (echo (pprn-str s)))
@@ -319,16 +298,11 @@
 				    (catch Throwable t 
 				      (log-exception t) (echo t))))))))))
 
-
-
 (defn-log identify-this-blip []
   (echo-pp (:rep-loc *ctx*)))
 
 (defn-log create-child-blip [] 
   (blip-create-child-ops (:rep-loc *ctx*) "" (str (rand))))
-
-(defn burp-js [] (echo js-snippet))
-(defn burp-html [] (echo html-snippet))
 
 (def *clipboard* (atom nil))
 (def *last-clipboard* (atom nil))
@@ -393,12 +367,7 @@
     (replicate-replocs!     
      (assoc source-rep-loc :type "gadget" :key (str source-key subkey))
      (assoc (:rep-loc *ctx*) :type "gadget" :key (str rep-key subkey))))
-  (add-string-and-eval (:rep-loc *ctx*) (str `(we/submit-replication-delta ~rep-key))))
-
-(defn-log c [key] 
-  (if (empty? @*clipboard*) 
-    (remember-gadget-key! key)
-    (let [ops (replicate-gadget-key! key)] (swap! *clipboard* empty) ops)))
+  (add-string-and-eval-ops (:rep-loc *ctx*) (str `(we/submit-replication-delta ~rep-key))))
 
 (defn-log create-view-dev-replication-generic! [suffix]
   (let [rep-loc (:rep-loc *ctx*)]
@@ -424,21 +393,21 @@
   (create-view-dev-replication-generic! suffix)
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
-     (append-gadget-op rep-loc 
-		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
-			"author" "avital@wavesandbox.com"
-			"_view.js" "// js"
-			"_view.html" "<!-- html -->"
-			"_view.css" "/* css */"
-			"_rep-loc.waveId" (rep-loc :wave-id)
-			"_rep-loc.waveletId" (rep-loc :wavelet-id)
-			"_rep-loc.blipId" (rep-loc :blip-id)})
+     (append-gadget-ops rep-loc 
+                        {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
+                         "author" "avital@wavesandbox.com"
+                         "_view.js" "// js"
+                         "_view.html" "<!-- html -->"
+                         "_view.css" "/* css */"
+                         "_rep-loc.waveId" (rep-loc :wave-id)
+                         "_rep-loc.waveletId" (rep-loc :wavelet-id)
+                         "_rep-loc.blipId" (rep-loc :blip-id)})
      (blip-create-child-ops rep-loc "" "html")
      (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
      (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
-     (document-delete-append (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
-     (document-delete-append (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
-     (document-delete-append (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
+     (document-delete-append-ops (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
+     (document-delete-append-ops (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
+     (document-delete-append-ops (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
 
 ; @TODO this has swap! here -  is there a way to prevent it?
 (defn-log view-dev-this-blip-generic2
@@ -447,7 +416,7 @@
   (create-view-dev-replication-generic! suffix)
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
-     (append-gadget-op rep-loc 
+     (append-gadget-ops rep-loc 
 		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
 			"author" "avital@wavesandbox.com"
 			"_view.js" ""
@@ -462,61 +431,21 @@
      (blip-create-child-ops rep-loc "" "html")
      (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
      (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
-     (document-delete-append (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
-     (document-delete-append (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
-     (document-delete-append (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
+     (document-delete-append-ops (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
+     (document-delete-append-ops (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
+     (document-delete-append-ops (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
 
 
 (defn-log view-dev-this-blip [] (view-dev-this-blip-generic ""))
-
-(defn-log add-string-and-eval [rep-loc str]
-  (concat
-   (document-insert-op rep-loc 0 str)
-   (add-annotation-ops rep-loc "we/eval" 0 (count str) "nothing")))
-
-;str-to-annotate "(concat((we/view-dev-this-blip-generic \"2\")(we/echo \"f1._view.html\")))"
 
 (defn-log view-dev-annotate-blip []
   (let [rep-loc (:rep-loc *ctx*) 
 	str-to-annotate "(we/view-dev-this-blip-generic2 \"2\")"]
     (concat 
      (blip-create-child-ops rep-loc "" "view-dev")
-     (add-string-and-eval (assoc rep-loc :blip-id "view-dev") str-to-annotate))))
+     (add-string-and-eval-ops (assoc rep-loc :blip-id "view-dev") str-to-annotate))))
 
 (def op-map-path ["property" "properties" "map"])
-
-(defn-log unite-gadget-chunk [ops]
-  (assoc-in (first ops) op-map-path
-	    (apply merge (for [op ops] (get-in op op-map-path)))))
-
-; From clojure.contrib.core. Not sure why I can't just use it.
-(defn dissoc-in
-  "Dissociates an entry from a nested associative structure returning a new
-nested structure. keys is a sequence of keys. Any empty maps that result
-will not be present in the new structure."
-  [m [k & ks :as keys]]
-  (if ks
-    (if-let [nextmap (get m k)]
-      (let [newmap (dissoc-in nextmap ks)]
-        (if seq newmap
-	    (assoc m k newmap)
-	    (dissoc m k)))
-      m)
-    (dissoc m k)))
-
-(defn-log op-gadget-skeleton [op]
-  (dissoc-in op op-map-path))
-
-(defn-log partition-by-func [coll f]
-  (let [skeletons (into #{} (map f coll))]
-    (for [skeleton skeletons]
-      (for [x coll :when (= (f x) skeleton)] x))))
-
-(defn-log find-gadget-chunks [ops]
-  (partition-by-func ops op-gadget-skeleton))
-
-(defn-log unite-gadget-modifications [ops]
-  (for [chunk (find-gadget-chunks ops)] (unite-gadget-chunk chunk)))
 
 (defn-log view-dev [events-map]
   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
@@ -534,7 +463,6 @@ will not be present in the new structure."
       (reset! *clipboard* {:rep-loc (:rep-loc *ctx*) :to-key to-key})
       (gadget-submit-delta-ops (:rep-loc *ctx*) {"to-key" "*" "url" ((:gadget-state *ctx*) "url")}))))
 
-
 (defn-log handle-from-key []
   (if-let [from-key ((:gadget-state *ctx*) "from-key")]  
     (if (not= from-key "*")
@@ -550,20 +478,31 @@ will not be present in the new structure."
    (handle-to-key)
    (handle-from-key)))
 
-
 (defn-log crazy-shit [events-map]
   (concat 
    
    (view-dev events-map)
    
    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-    (iterate-events events-map "WAVELET_SELF_ADDED"  (view-dev-annotate-blip)))
+    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-annotate-blip)))
    
    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-    (iterate-events events-map "BLIP_SUBMITTED"  (gadget-rep)))
+    (iterate-events events-map "BLIP_SUBMITTED" (gadget-rep)))
    
    (do-replication-by-json events-map)))
 
+
+; ============================
+; ======= Server Layer =======
+; ============================
+
+(defn-log answer-wave [events-map]
+  (json-str
+   (log-info "Operations" (wave-attempt
+			   (operation-bundle-json ((ns-resolve 'we
+							       (read-string
+								((read-json (events-map "proxyingFor")) "action"))) 
+						   events-map))))))
 
 
 

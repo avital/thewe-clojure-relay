@@ -37,7 +37,7 @@
     result))
 
 (defmacro log* [result]
-  `(log** (log-time (attempt ~result))))
+  `(log** (attempt ~result)))
 
 (defn log-conj [pre new]
   (conj pre (str (swap! *log-counter* inc) "/" new)))

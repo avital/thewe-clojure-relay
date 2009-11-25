@@ -4677,148 +4677,162 @@ var MooTreeNode = new Class({
 
 
 <script type="text/javascript">
+                    var tree;
 
-var tree;
+                    log = function(x) {
+                        console.log(x);
+                        return x;
+                    };
 
-log = function(x) {
-	console.log(x);
-	return x;
-}
+                    insertJSONToTree = function(tree, json) {
+	                if ($type(json) == 'object')
+		            json = $H(json)
 
-insertJSONToTree = function(tree, json) {
-	if ($type(json) == 'object')
-		json = $H(json)
+	                json.getKeys().filter(function(key) {
+			    return key != 'result'
+		        }).sort(function(a, b) {
+		            var counter = function(s) {
+			        return s.toInt();
+		            }
 
-	json.getKeys().filter(function(key) {
-			return key != 'result'
-		}).sort(function(a, b) {
-		var counter = function(s) {
-			return s.toInt();
-		}
+		            return counter(a) - counter(b);
+	                }).each(function(key) {
+		            var value = json[key]
 
-		return counter(a) - counter(b);
-	}).each(function(key) {
-		var value = json[key]
-
-		if (['object', 'hash'].contains($type(value))) {
-			var node = tree.insert({
-				text: '[' + value.time + '] ' + key.substring(key.indexOf('/') + 1),
-				onClick: function() {
-				  currentNode = node;
+		            if (['object', 'hash'].contains($type(value))) {
+			        var node = tree.insert({
+				    text: key.substring(key.indexOf('/') + 1),
+				    onClick: function() {
+				        currentNode = node;
 					$('result').set('text', value.result)
-				},
-				color: (value.result || '').contains("[Exception]") ? 'red' : null
+				    },
+				    color: (value.result || '').contains("[Exception]") ? 'red' : null
+			        });
 
-			});
+			        insertJSONToTree(node, value);
+		            }
+                        });
+                    };
 
-			insertJSONToTree(node, value);
+                    nextNode = function(node, shallow) {
+                        if (node.open && !shallow) {
+                            if (node.nodes && node.nodes.length > 0)
+	                        return node.nodes[0];
+                            else
+	                        return nextNode(node.parent);
+                        }
 
+                        if (!node.parent)
+                            return null;
 
-		}
-})
-  }
+                        var index = node.parent.nodes.indexOf(node)
 
-
-nextNode = function(node,  shallow) {
-    if (node.open && !shallow) {
-      if (node.nodes && node.nodes.length > 0)
-	return node.nodes[0];
-      else
-	return nextNode(node.parent);
-    }
-
-    if (!node.parent)
-      return node;
-
-    var index = node.parent.nodes.indexOf(node)
-
-    if (index < node.parent.nodes.length - 1)
-      return node.parent.nodes[index + 1];
-    else
-      return nextNode(node.parent, true);
-  }
+                        if (index < node.parent.nodes.length - 1)
+                            return node.parent.nodes[index + 1];
+                        else {
+                            return nextNode(node.parent, true) || (shallow ? null : node);
+                        }
+                    };
 
 		    lastNode = function(node) {
-		      if (!node.open || !node.nodes || node.nodes.length == 0)
-			return node
-		      else
-		        return lastNode(node.nodes[node.nodes.length - 1]);
+		        if (!node.open || !node.nodes || node.nodes.length == 0)
+			    return node
+		        else
+		            return lastNode(node.nodes[node.nodes.length - 1]);
 
-		    }
+		    };
 
-  prevNode = function(node) {
-    if (!node.parent)
-      return node;
+                    prevNode = function(node) {
+                        if (!node.parent)
+                            return node;
 
-    var index = node.parent.nodes.indexOf(node)
+                        var index = node.parent.nodes.indexOf(node)
 
-    if (index > 0)
-      return lastNode(node.parent.nodes[index - 1]);
-    else
-      return node.parent;
+                        if (index > 0)
+                            return lastNode(node.parent.nodes[index - 1]);
+                        else
+                            return node.parent;
 
-  }
+                    };
 
+		    scrollElement = function(element, container, isup) {
+		        var curScroll = container.getScroll().y;
+		        var elPosition = element.getPosition(container).y;
 
+		        if (elPosition < curScroll) {
+			    container.scrollTo(0, elPosition);
+                        }
+		        else if (elPosition + element.getSize().y > curScroll + container.getSize().y) {
+                            container.scrollTo(0, elPosition - container.getSize().y + element.getSize().y);
+                        }
+
+		    };
 
 		    window.addEvent('domready', function() {
+		        var json = $('json').get('text');
 
-		  var json = $('json').get('text');
+	                $('mytree').empty()
 
-	$('mytree').empty()
+	                tree = new MooTreeControl({
+		            div: 'mytree',
+		            mode: 'files',
+		            grid: true
+	                },{
+		            text: 'Function Call Log',
+	                    open: true,
+	                    onClick: function() {
+	                        currentNode = tree.root;
+	                    }
+	                });
 
-	tree = new MooTreeControl({
-		div: 'mytree',
-		mode: 'files',
-		grid: true
-	},{
-		text: 'Function Call Log',
-	  open: true,
-	  onClick: function() {
-	    currentNode = tree.root;
-	  }
+	                tree.disable(); // this stops visual updates while we're building the tree...
 
+	                insertJSONToTree(tree, JSON.decode(json))
 
+	                tree.enable(); // this turns visual updates on again.
 
-	});
+			treeFocused = false;
 
-	tree.disable(); // this stops visual updates while we're building the tree...
+			$('mytree').addEvent('click', function() {
+			    treeFocused = true;
+			});
 
-	insertJSONToTree(tree, JSON.decode(json))
+			$('result').addEvent('focus', function() {
+			    treeFocused = false;
+			});
 
-	tree.enable(); // this turns visual updates on again.
+			window.addEvent('keypress', function(event) {
+			    if (treeFocused) {
 
+			        var key = event.event.keyCode;
+			        if (key == Event.Keys.right) {
+			            if (currentNode.nodes && currentNode.nodes.length > 0)
+			                currentNode.toggle(false, true);
+			            return false;
 
-		window.onkeypress = function(event) {
-			  var key = event.keyCode;
-			  if (key == Event.Keys.right) {
-			    if (currentNode.nodes && currentNode.nodes.length > 0)
-			      currentNode.toggle(false, true);
-			    return false;
+			        }
+			        else if (key == Event.Keys.left) {
+			            currentNode.toggle(false, false);
+			            return false;
+			        }
+			        else if (key == Event.Keys.down) {
+			            tree.select(nextNode(currentNode));
+			            scrollElement(currentNode.div.main, $('mytree'));
+			            return false;
+			        }
+			        else if (key == Event.Keys.up) {
+			            tree.select(prevNode(currentNode));
+			            scrollElement(currentNode.div.main, $('mytree'));
+			            return false;
+			        }
 
-			  }
-			  else if (key == Event.Keys.left) {
-			    currentNode.toggle(false, false);
-			    return false;
-			  }
-			  else if (key == Event.Keys.down) {
-			    tree.select(nextNode(currentNode));
-			    return false;
-			  }
-			  else if (key == Event.Keys.up) {
-			    tree.select(prevNode(currentNode));
-			    return false;
-			  }
-
-		  if (String.fromCharCode(event.charCode) == 'e' && event.ctrlKey) {
-
-		    tree.root.toggle(true);
-		  }
-			};
-
-
-
-				    })
+		                if (String.fromCharCode(event.event.charCode) == 'e' &&
+                                    event.event.ctrlKey) {
+		                    tree.root.toggle(true);
+		                }
+			    }
+			});
+		    });
 
 </script>
 
@@ -4833,7 +4847,7 @@ nextNode = function(node,  shallow) {
 
     #mytree {
       margin-top: 5px;
-      height: 350px;
+      height: 330px;
       overflow: auto;
     }
   </style>
@@ -4844,6 +4858,34 @@ nextNode = function(node,  shallow) {
 <hr>
 <span id="json" style="display: none;">
 @@@result@@@
+                    <!--
+		    {
+			&quot;1/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;11/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;12/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;21/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;13/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;31/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;14/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;41/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;15/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;51/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;16/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;61/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;17/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;71/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;18/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;81/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;19/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;91/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;116/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;161/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;117/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;171/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+			&quot;110/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;2/b&quot;:{&quot;result&quot:&quot;66&quot;}},
+		    &quot;11/a&quot;:{&quot;result&quot;:&quot;4&quot;, &quot;12/b&quot;:{&quot;result&quot:&quot;66&quot;}}
+		    }
+-->
 
 
 </span>
