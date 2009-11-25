@@ -52,6 +52,27 @@ will not be present in the new structure."
 ;
 ; rep-rules:  A set of sets (a partition) of rep-locs
 
+(defn-log add-to-class [partition class el] 
+  (conj (disj partition class) (conj class el)))
+
+(defn-log containing-rep-class [rep-loc]
+  (first (for [rep-class @*rep-rules* :when (some #{rep-loc} rep-class)] rep-class)))
+
+(defn-log replicate-replocs! [r1 r2]
+  (let [rc1 (containing-rep-class r1) rc2 (containing-rep-class r2)]
+    (cond
+      (and (not rc1) (not rc2))  ; when both are not in rep-classes
+      (swap! *rep-rules* conj #{r1 r2})
+
+      (and rc1 (not rc2))
+      (swap! *rep-rules* add-to-class rc1 r2)
+
+      (and rc2 (not rc1))
+      (swap! *rep-rules* add-to-class rc2 r1)
+
+      (and (and rc1 rc2) (not= rc1 rc2))
+      (swap! *rep-rules* #(conj (disj % rc1 rc2) (union rc1 rc2))))))
+
 (defn-log equal-rep-loc [r1 r2]
   (let [rep-loc-keys [:wave-id :wavelet-id :blip-id]] 
     (= (select-keys r1 rep-loc-keys) (select-keys r2 rep-loc-keys))))
@@ -234,7 +255,7 @@ will not be present in the new structure."
 (defmethod update-rep-loc-ops "gadget" [rep-loc content]
   (log (gadget-submit-delta-ops rep-loc 
 				{(:key rep-loc) content
-				 "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"})))
+				 "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"})))
 
 (defmethod update-rep-loc-ops "blip" [rep-loc content]
   (log (document-delete-append-ops rep-loc content)))
@@ -248,6 +269,12 @@ will not be present in the new structure."
 ; =============================
 ; ======= Harness Layer =======
 ; =============================
+
+;;; Utilities
+
+
+
+;;; Helper "API"
 
 (def *ctx*)
 
@@ -266,15 +293,14 @@ will not be present in the new structure."
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] 
        (binding [~'*ctx* {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}] ~for-args))))
 
+
+
+;;; Functions that can be called with an we/eval
+
 (defn-log delete-annotation [annotation]
   (delete-annotation-ops (:rep-loc *ctx*) 
 	 (dig annotation "range" "start")
 	 (dig annotation "range" "end")))
-
-(defn sfirst [x]
-  (if-let [result (first x)]
-    result
-    []))
 
 (defn-log echo [s]
   (document-insert-ops (:rep-loc *ctx*) (:cursor *ctx*) (str \newline s)))
@@ -282,27 +308,24 @@ will not be present in the new structure."
 (defn-log echo-pp [s]
   (echo (pprn-str s)))
 
-(defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
-  (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
-   (iterate-events events-map "DOCUMENT_CHANGED"     
-		   (apply concat 
-			  (for [annotation (log (:annotations *ctx*)) 		  
-				:when (not= -1 (dig annotation "range" "start"))
-				:when (= "we/eval" (annotation "name"))
-				:let [start (dig annotation "range" "start") 
-				      end (dig annotation "range" "end")]] 
-			    (binding [*ctx* (assoc *ctx* :cursor end)]
-			      (concat
-			       (delete-annotation annotation)
-			       (try (log (eval (read-string (subs (:content *ctx*) start end))))
-				    (catch Throwable t 
-				      (log-exception t) (echo t))))))))))
-
 (defn-log identify-this-blip []
   (echo-pp (:rep-loc *ctx*)))
 
 (defn-log create-child-blip [] 
   (blip-create-child-ops (:rep-loc *ctx*) "" (str (rand))))
+
+(defn-log modify-ggg [key val]
+  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}))
+
+(defn-log current-rep-class []
+  (containing-rep-class (*ctx* :rep-loc)))
+
+(defn-log gadget-rep-class [key]
+  (containing-rep-class (assoc (*ctx* :rep-loc)
+			   :type "gadget" :key key)))
+
+
+;;; Clipboard stuff
 
 (def *clipboard* (atom nil))
 (def *last-clipboard* (atom nil))
@@ -316,9 +339,6 @@ will not be present in the new structure."
   `(binding [*ctx* @*other-wave*]
      ~expr))
 
-(defn-log modify-ggb [key val]
-  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"}))
-
 (defn-log remember-gadget-key! [rep-key]
   (reset! *clipboard* 
 	  {:source-key rep-key 
@@ -330,37 +350,8 @@ will not be present in the new structure."
   (reset! *last-clipboard* @*clipboard*)
   (echo "ok!"))
 
-(defn-log containing-rep-class [rep-loc]
-  (first (for [rep-class @*rep-rules* :when (some #{rep-loc} rep-class)] rep-class)))
-
-(defn-log current-rep-class []
-  (containing-rep-class (*ctx* :rep-loc)))
-
-(defn-log gadget-rep-class [key]
-  (containing-rep-class (assoc (*ctx* :rep-loc)
-			   :type "gadget" :key key)))
-
-(defn-log add-to-class [partition class el] 
-  (conj (disj partition class) (conj class el)))
-
-(defn-log replicate-replocs! [r1 r2]
-  (let [rc1 (containing-rep-class r1) rc2 (containing-rep-class r2)]
-    (cond
-      (and (not rc1) (not rc2))  ; when both are not in rep-classes
-      (swap! *rep-rules* conj #{r1 r2})
-
-      (and rc1 (not rc2))
-      (swap! *rep-rules* add-to-class rc1 r2)
-
-      (and rc2 (not rc1))
-      (swap! *rep-rules* add-to-class rc2 r1)
-
-      (and (and rc1 rc2) (not= rc1 rc2))
-      (swap! *rep-rules* #(conj (disj % rc1 rc2) (union rc1 rc2))))))
-
-
 (defn submit-replication-delta [rep-key]
-  (we/gadget-submit-delta-ops (:rep-loc we/*ctx*) (into {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"} (for [[subkey val] (:subkeys @we/*last-clipboard*)] [(str rep-key subkey) val]))))
+  (we/gadget-submit-delta-ops (:rep-loc we/*ctx*) (into {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"} (for [[subkey val] (:subkeys @we/*last-clipboard*)] [(str rep-key subkey) val]))))
 
 (defn-log replicate-gadget-key! [rep-key]
   (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] [subkey _] subkeys] 
@@ -394,7 +385,7 @@ will not be present in the new structure."
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
      (append-gadget-ops rep-loc 
-                        {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
+                        {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
                          "author" "avital@wavesandbox.com"
                          "_view.js" "// js"
                          "_view.html" "<!-- html -->"
@@ -417,7 +408,7 @@ will not be present in the new structure."
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
      (append-gadget-ops rep-loc 
-		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
+		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
 			"author" "avital@wavesandbox.com"
 			"_view.js" ""
 			"_view.html" ""
@@ -447,16 +438,8 @@ will not be present in the new structure."
 
 (def op-map-path ["property" "properties" "map"])
 
-(defn-log view-dev [events-map]
-  (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
-(defn-log do-replication-by-json [events-map]
-  (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map)))
-
-(defn-log view-dev-and-do-replication [events-map]
-  (concat (view-dev events-map) (do-replication-by-json events-map)))
-
+;;; Utilities for gadget-initiated replication
 (defn-log handle-to-key []
   (if-let [to-key ((:gadget-state *ctx*) "to-key")]
    (when (not= to-key "*")
@@ -473,10 +456,54 @@ will not be present in the new structure."
 			      (assoc (:rep-loc *ctx*) :type "gadget" :key key)))
 	(gadget-submit-delta-ops (:rep-loc *ctx*) {"from-key" "*" "url" ((:gadget-state *ctx*) "url")})))))
 
-(defn-log gadget-rep "TODO" []
+(defn-log handle-gadget-rep "TODO" []
   (concat
    (handle-to-key)
    (handle-from-key)))
+
+
+;;; "Subrobots" to be used with thewe-0+...@appspot.com
+
+(defn sfirst [x]
+  (if-let [result (first x)]
+    result
+    []))
+
+(defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
+  (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
+   (iterate-events events-map "DOCUMENT_CHANGED"     
+		   (apply concat 
+			  (for [annotation (log (:annotations *ctx*)) 		  
+				:when (not= -1 (dig annotation "range" "start"))
+				:when (= "we/eval" (annotation "name"))
+				:let [start (dig annotation "range" "start") 
+				      end (dig annotation "range" "end")]] 
+			    (binding [*ctx* (assoc *ctx* :cursor end)]
+			      (concat
+			       (delete-annotation annotation)
+			       (try (log (eval (read-string (subs (:content *ctx*) start end))))
+				    (catch Throwable t 
+				      (log-exception t) (echo t))))))))))
+
+
+(defn-log view-dev [events-map]
+  (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
+   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
+
+(defn-log do-replication-by-json [events-map]
+  (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map)))
+
+(defn-log allow-gadget-replication [events-map]
+  (apply concat (iterate-events events-map "BLIP_SUBMITTED" (handle-gadget-rep))))
+
+(defn concat-apply [fns arg]
+  (apply concat 
+         (map #(% arg) fns)))
+
+(defn-log view-dev-and-do-replication [events-map]
+  (concat-apply 
+   [view-dev do-replication-by-json allow-gadget-replication] events-map))
+
 
 (defn-log crazy-shit [events-map]
   (concat 
@@ -487,7 +514,7 @@ will not be present in the new structure."
     (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-annotate-blip)))
    
    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-    (iterate-events events-map "BLIP_SUBMITTED" (gadget-rep)))
+    (iterate-events events-map "BLIP_SUBMITTED" (handle-gadget-rep)))
    
    (do-replication-by-json events-map)))
 
