@@ -9,7 +9,17 @@
 ; ======= Atoms =======
 ; =====================
 
-(def *rep-rules* (atom #{}))
+(defmacro init-atoms 
+  ([] nil)
+  ([name initial-val & rest]
+     `(do
+        (defonce ~name (atom ~initial-val))
+        ~`(init-atom ~@rest))))
+
+(init-atoms *rep-rules* #{}
+            *clipboard* nil
+            *last-clipboard* nil
+            *other-wave* nil)
 
 ; =========================
 ; ======= Utilities =======
@@ -245,7 +255,7 @@ will not be present in the new structure."
      "property" (blip-data-op-json (assoc rep-loc :blip-id new-id) content),
      "type" "BLIP_CREATE_CHILD")])
 
-(defn-log operation-bundle-json [ops]
+(defn operation-bundle-json [ops]
   {"javaClass"  "com.google.wave.api.impl.OperationMessageBundle",
    "operations"  {"javaClass"  "java.util.ArrayList",
                   "list"  ops}
@@ -326,10 +336,6 @@ will not be present in the new structure."
 
 
 ;;; Clipboard stuff
-
-(def *clipboard* (atom nil))
-(def *last-clipboard* (atom nil))
-(def *other-wave* (atom nil))
 
 (defn-log remember-wave! []
   (reset! *other-wave* *ctx*)
@@ -523,13 +529,13 @@ will not be present in the new structure."
 ; ======= Server Layer =======
 ; ============================
 
-(defn-log answer-wave [events-map]
+(defn answer-wave [events-map]
   (json-str
-   (log-info "Operations" (wave-attempt
-			   (operation-bundle-json ((ns-resolve 'we
-							       (read-string
-								((read-json (events-map "proxyingFor")) "action"))) 
-						   events-map))))))
+   (log-info "Operations" (log (wave-attempt
+                             (operation-bundle-json ((ns-resolve 'we
+                                                                 (read-string
+                                                                  ((read-json (events-map "proxyingFor")) "action"))) 
+                                                     events-map)))))))
 
 
 

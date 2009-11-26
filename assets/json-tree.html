@@ -4806,8 +4806,13 @@ var MooTreeNode = new Class({
 
 			        var key = event.event.keyCode;
 			        if (key == Event.Keys.right) {
-			            if (currentNode.nodes && currentNode.nodes.length > 0)
-			                currentNode.toggle(false, true);
+			            if (currentNode.nodes && currentNode.nodes.length > 0) {
+			                    currentNode.toggle(false, true);
+                                            scrollElement(currentNode.nodes.getLast().div.main, $('mytree'));
+                                            scrollElement(currentNode.div.main, $('mytree'));
+                                    }
+
+
 			            return false;
 
 			        }
@@ -4840,16 +4845,17 @@ var MooTreeNode = new Class({
   <title>asdf</title>
 
   <style type="text/css">
-    #result {
-      width: 100%;
-      height: 150px;
-    }
+#result {
+width: 100%;
+        height: 150px;
+}
 
-    #mytree {
-      margin-top: 5px;
-      height: 330px;
-      overflow: auto;
-    }
+#mytree {
+        margin-top: 5px;
+        height: 330px;
+        overflow-x: hidden;
+        overflow-y: scroll;
+}
   </style>
 </head>
 

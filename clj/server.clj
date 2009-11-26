@@ -23,11 +23,11 @@
        (def *enable-logging* false)
        (.replace json-tree-html "@@@result@@@" (escape-html (json-str @*call-log*))))])
   (ANY "/wave"
-    (log (let [events (log (params :events))]
-	   (if (or (.contains events "\"name\":\"we/eval\"")
-		   (.contains events "BLIP_SUBMITTED")
-		   (.contains events "WAVELET_SELF_ADDED"))
-	     (answer-wave (read-json (params :events)))
-	     (json-str (operation-bundle-json [])))))))
+    (let [events (params :events)]
+      (if (or (.contains events "\"name\":\"we/eval\"")
+              (.contains events "BLIP_SUBMITTED")
+              (.contains events "WAVELET_SELF_ADDED"))
+        (answer-wave (read-json (params :events)))
+        (json-str (operation-bundle-json []))))))
 
 

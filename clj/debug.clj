@@ -39,8 +39,13 @@
 (defmacro log* [result]
   `(log** (attempt ~result)))
 
-(defn log-conj [pre new]
+; @todo: remove this stupid string / thing
+(defn log-conj-clean [pre new]
   (conj pre (str (swap! *log-counter* inc) "/" new)))
+
+(defn log-conj [pre new]
+  (log-conj-clean pre (binding [*print-level* 3] 
+                        (pr-str new))))
 
 (def *enable-logging* false)
 (def *log-monads* false)
@@ -61,7 +66,10 @@
 	(cond
 	  (#{'do 'if 'and 'or} func)
 	  standard-log-form
-      
+
+          (#{'try} func)
+          `(~func (log ~second expr) ~@(rest (rest expr))) 
+          
 	  (#{'let 'for 'clojure.core/let 'clojure.core/for} func)
 	  `(~func ~(second expr) ~@(for [clause (rest (rest expr))]
 				     `(log ~clause)))
@@ -101,8 +109,9 @@
 (defmacro logify [name args rest]
   `(if *enable-logging*
      (let [result# 
-	   (binding [*log-path* (log-conj *log-path* (str "Function call: " '(~name ~@args)))]
-	     (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
+	   (binding [*log-path* (log-conj-clean *log-path* (str "Function call: " '(~name ~@args)))]
+	     ~@(for [arg args] `(log ~arg))
+             (log* (do ~@(for [expr# rest] `(log ~expr#)))))]
        (if (and *record-unit-tests* (empty? *log-path*))
 	 (let [expr# `(~'~name ~@~args)]
 	   (swap! *unit-tests* assoc expr# result#)))
@@ -146,7 +155,7 @@
 	  (log-exception t#)
 	  (operation-bundle-json []))))
 
-(defn-log log-info [title x]
+(defn log-info [title x]
   (append-spit "/home/avital/swank/log/operations"
 	       (str (current-time) \newline title \newline (pprn-str x) \newline))
   x)
