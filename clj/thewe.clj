@@ -14,7 +14,7 @@
   ([name initial-val & rest]
      `(do
         (defonce ~name (atom ~initial-val))
-        ~`(init-atom ~@rest))))
+        ~`(init-atoms ~@rest))))
 
 (init-atoms *rep-rules* #{}
             *clipboard* nil
