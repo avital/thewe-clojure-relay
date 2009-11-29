@@ -59,20 +59,27 @@
 		     [name `(log ~val)])))
 )
 
+(defn log-all [expr]
+  (for [clause expr]
+    `(log ~clause)))
+
 (defn internal-log-form [expr]
   (let [func (first expr)
-	standard-log-form `(~func ~@(for [clause (rest expr)]
-				      `(log ~clause)))]
+	standard-log-form `(~func ~@(log-all (rest expr)))]
+        
 	(cond
 	  (#{'do 'if 'and 'or} func)
 	  standard-log-form
 
+          (#{'if-let} func)
+          `(~func [~(first (second expr)) (log ~(second (second expr)))] ~@(log-all (rest (rest expr))))
+                  
+          
           (#{'try} func)
           `(~func (log ~second expr) ~@(rest (rest expr))) 
           
-	  (#{'let 'for 'clojure.core/let 'clojure.core/for} func)
-	  `(~func ~(second expr) ~@(for [clause (rest (rest expr))]
-				     `(log ~clause)))
+	  (#{'let 'for 'clojure.core/let 'clojure.core/for 'doseq 'clojure.core/doseq 'binding 'clojure.core/binding} func)
+	  `(~func ~(second expr) ~@(log-all (rest (rest expr))))
       
 	  (or (special-symbol? func)
 	      (macro? expr))
@@ -200,7 +207,7 @@
   (swap! *call-log* empty)
   (def x 2)
   (def y 3)
-  (log (add x y))
+  (log (if-let [z (+ x y)] (+ x x)))
   @*call-log*
   
   (def x 2)
