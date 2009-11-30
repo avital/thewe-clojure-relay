@@ -72,11 +72,10 @@
 	  standard-log-form
 
           (#{'if-let} func)
-          `(~func [~(first (second expr)) (log ~(second (second expr)))] ~@(log-all (rest (rest expr))))
-                  
+          `(~func [~(first (second expr)) (log ~(second (second expr)))] ~@(log-all (rest (rest expr))))            
           
           (#{'try} func)
-          `(~func (log ~second expr) ~@(rest (rest expr))) 
+          `(~func (log ~(second expr)) ~@(rest (rest expr))) 
           
 	  (#{'let 'for 'clojure.core/let 'clojure.core/for 'doseq 'clojure.core/doseq 'binding 'clojure.core/binding} func)
 	  `(~func ~(second expr) ~@(log-all (rest (rest expr))))
@@ -200,14 +199,26 @@
   (defn f [& args] `(f ~@args))
 
   (f 2 3)
+
   
+  (defn-log f []
+    (try
+     (eval "x/x")
+     (catch Throwable t 2)))
+  
+  
+  
+  (def y)
+  
+  (defn-log f [x] 
+    (binding [y (+ 2 2)] (+ x y) 3))
 
   (defn-log add [a b] (+ a b))  
   (def *enable-logging* true)
   (swap! *call-log* empty)
   (def x 2)
   (def y 3)
-  (log (if-let [z (+ x y)] (+ x x)))
+  (log (if-let [z (:ass {})] (+ x x)))
   @*call-log*
   
   (def x 2)
