@@ -90,14 +90,25 @@ will not be present in the new structure."
 (defmulti update-rep-loc-ops
   (fn-log [rep-loc content] (:type rep-loc)))
 
+(defn-log has-annotation [rep-op name val]
+  (some #(and (= (% "name") name) (= (% "value") val)) (:annotations rep-op)))
+
 ; @todo: can this be better?
 ; checks whether the rep-op satisfies the rep-loc definition
-(defn-log match-rep-loc [rep-op rep-loc]
-  (if (:blip-id rep-loc)
+(defn-log match-rep-loc 
+  "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from rep-rules" 
+  [rep-op rep-loc]
+  (cond
+    (:blip-id rep-loc)			; replication is by blip-id
     (= (:rep-loc rep-op) rep-loc)
+    
+    (:subcontent rep-loc)		; replication is by subcontent
     (and
      (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
-     (.contains (:content rep-op) (:subcontent rep-loc)))))
+     (.contains (:content rep-op) (:subcontent rep-loc)))
+    
+    (:annotation-name rep-loc)		; replication is by annotation
+    (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc))))
 
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
 (defn-log do-replication [rep-rules rep-ops]
@@ -105,7 +116,6 @@ will not be present in the new structure."
 		      rep-class rep-rules :when (some (partial match-rep-loc rep-op) rep-class)
 		      rep-loc rep-class :when (and (rep-loc :blip-id) (not= rep-loc (:rep-loc rep-op)))]
 		  (update-rep-loc-ops rep-loc (:content rep-op)))))
-
 
 ; ===============================================
 ; ======= Google Wave Incoming JSON Layer =======
@@ -120,6 +130,8 @@ will not be present in the new structure."
 ;
 ; blip-data:          (dig incoming-wave-map "blips" "map" blip-id)
 
+
+
 (defn-log blip-data-to-rep-ops [blip-data]
   (let [basic-rep-loc {:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id (blip-data "blipId")}]
     (if-let [gadget-map (first (dig blip-data "elements" "map"))]
@@ -129,18 +141,13 @@ will not be present in the new structure."
           {:rep-loc (assoc basic-rep-loc :type "gadget" :key k) :content v}))
 
 					; there is no gadget
-      [{:rep-loc (assoc basic-rep-loc :type "blip") :content (blip-data "content")}])))
 
-(defn-log incoming-map-to-rep-ops [incoming]
-  (let [modified-blip-ids
-        (for [event (dig incoming "events" "list")
-              :when (not (.endsWith (event "modifiedBy") "@a.gwave.com"))
-              :when (= (event "type") "BLIP_SUBMITTED")]
-          (dig event "properties" "map" "blipId"))]
-    (apply concat
-      (for [blip-id modified-blip-ids]
-        (blip-data-to-rep-ops
-          (dig incoming "blips" "map" blip-id))))))
+      (if-let [dnr (first (filter #(= ( % "name") "we/DNR") (:annotations *ctx*)))]
+	[{:rep-loc (assoc basic-rep-loc :type "blip") :content 
+	  (.replace (blip-data "content") (subs (blip-data "content") (dig dnr "range" "start") (dig dnr "range" "end")) "") 
+	  :annotations (:annotations *ctx*)}]
+	[{:rep-loc (assoc basic-rep-loc :type "blip") :content (blip-data "content") :annotations (:annotations *ctx*)}]))))
+
 
 
 ; ===============================================
@@ -163,11 +170,15 @@ will not be present in the new structure."
      "javaClass"  "com.google.wave.api.impl.OperationImpl"}))
 
 (defn-log document-delete-append-ops [rep-loc content]
+  (concat
   [(assoc (op-skeleton rep-loc)
      "index"  -1,
       "property"  nil,
-      "type"  "DOCUMENT_DELETE")
-   (assoc (op-skeleton rep-loc)
+      "type"  "DOCUMENT_DELETE")]
+   (document-append-ops rep-loc content)))
+
+(defn-log document-append-ops [rep-loc content]
+  [(assoc (op-skeleton rep-loc)
      "index"  0,
       "property"  content,
       "type"  "DOCUMENT_APPEND")])
@@ -178,26 +189,32 @@ will not be present in the new structure."
      "property"  nil,
      "type"  "DOCUMENT_DELETE")])
 
-(defn-log range-op-json [start end] 
+(defn-log range-json [start end] 
   {"end" end, "javaClass" "com.google.wave.api.Range", "start" start})
 
-(defn-log annotation-op-json [name start end value]
+(defn-log annotation-op-json [name range value]
   {"javaClass" "com.google.wave.api.Annotation",
    "value" value,
    "name" name,
-   "range" (range-op-json start end)})
+   "range" range})
 
 (defn-log delete-annotation-ops [rep-loc start end]
   [(assoc (op-skeleton rep-loc)
      "index" -1,
-     "property" (range-op-json start end),
+     "property" (range-json start end),
      "type" "DOCUMENT_ANNOTATION_DELETE")])
 
 (defn-log add-annotation-ops [rep-loc name start end value]
   [(assoc (op-skeleton rep-loc)
      "index" 0,
-     "property" (annotation-op-json name start end value),
+     "property" (annotation-op-json name (range-json start end) value),
      "type" "DOCUMENT_ANNOTATION_SET")])
+
+(defn-log add-annotation-norange-ops [rep-loc name value]
+  [(assoc (op-skeleton rep-loc)
+     "index" 0,
+     "property" (annotation-op-json name nil value),
+     "type" "DOCUMENT_ANNOTATION_SET_NORANGE")])
 
 ; @todo: what is the difference between using "append" and :append?
 
@@ -270,10 +287,13 @@ will not be present in the new structure."
 (defmethod update-rep-loc-ops "blip" [rep-loc content]
   (log (document-delete-append-ops rep-loc content)))
 
-(defn-log add-string-and-eval-ops [rep-loc str]
+(defn-log add-string-and-annotate-ops [rep-loc str annotate-until annotation-name]
   (concat
    (document-insert-ops rep-loc 0 str)
-   (add-annotation-ops rep-loc "we/eval" 0 (count str) "nothing")))
+   (add-annotation-ops rep-loc annotation-name 0 annotate-until "nothing")))
+
+(defn-log add-string-and-eval-ops [rep-loc str]
+  (add-string-and-annotate-ops rep-loc 0 str (count str) "we/eval"))
 
 
 ; =============================
@@ -301,7 +321,7 @@ will not be present in the new structure."
 		 ~'rep-loc {:type "blip"  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId")}
 		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
 		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] 
-       (binding [~'*ctx* {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state}] ~for-args))))
+       (binding [~'*ctx* (log {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state})] ~for-args))))
 
 
 
@@ -462,6 +482,30 @@ will not be present in the new structure."
 			      (assoc (:rep-loc *ctx*) :type "gadget" :key key)))
 	(gadget-submit-delta-ops (:rep-loc *ctx*) {"from-key" "*" "url" ((:gadget-state *ctx*) "url")})))))
 
+(defn-log handle-rep-keys []
+  (if-let [rep-key ((:gadget-state *ctx*) "rep-key")]  
+    (if (not= rep-key "*")
+      (let [rep-loc (:rep-loc *ctx*) 
+	    child-rep-loc (assoc rep-loc :blip-id "new-blip")
+	    annotate-str (str "This blip will be replicated to " rep-key)]
+      (replicate-replocs! (dissoc (assoc rep-loc :type "blip" :annotation-name "we/rep" :annotation-value rep-key) :blip-id) ;
+			  (assoc rep-loc :type "gadget" :key rep-key))
+      (concat
+
+       (blip-create-child-ops rep-loc "" "new-blip")
+					; set an annotation on the whole blip that holds as a value the key we want to replicate to
+       (add-annotation-norange-ops  child-rep-loc "we/rep" rep-key)
+					; insert an annotation that should NOT be replicated to let the user know this blip is replicated to a specific gadget key
+       (add-string-and-annotate-ops 
+	child-rep-loc
+	(str annotate-str "\n\n\n")
+	(count annotate-str)
+	"we/DNR")
+
+       (add-annotation-ops child-rep-loc "style/backgroundColor" 0 (count annotate-str) "rgb(255, 153, 0)")
+       
+       (gadget-submit-delta-ops rep-loc {"rep-key" "*" "url" ((:gadget-state *ctx*) "url")}))))))
+
 (defn-log handle-gadget-rep "TODO" []
   (concat
    (handle-to-key)
@@ -523,6 +567,15 @@ will not be present in the new structure."
     (iterate-events events-map "BLIP_SUBMITTED" (handle-gadget-rep)))
    
    (do-replication-by-json events-map)))
+
+(defn-log mother-shit [events-map]
+  (concat 
+   
+   (view-dev events-map)
+      
+   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
+    (iterate-events events-map "BLIP_SUBMITTED" (concat (handle-rep-keys) (do-replication @*rep-rules* (blip-data-to-rep-ops blip-data)))))))
+
 
 
 ; ============================
