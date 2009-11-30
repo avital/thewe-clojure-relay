@@ -21,6 +21,8 @@
             *last-clipboard* nil
             *other-wave* nil)
 
+(def *ctx*)
+
 ; =========================
 ; ======= Utilities =======
 ; =========================
@@ -169,6 +171,12 @@ will not be present in the new structure."
      "blipId" blip-id
      "javaClass"  "com.google.wave.api.impl.OperationImpl"}))
 
+(defn-log document-append-ops [rep-loc content]
+  [(assoc (op-skeleton rep-loc)
+     "index"  0,
+      "property"  content,
+      "type"  "DOCUMENT_APPEND")])
+
 (defn-log document-delete-append-ops [rep-loc content]
   (concat
   [(assoc (op-skeleton rep-loc)
@@ -176,12 +184,6 @@ will not be present in the new structure."
       "property"  nil,
       "type"  "DOCUMENT_DELETE")]
    (document-append-ops rep-loc content)))
-
-(defn-log document-append-ops [rep-loc content]
-  [(assoc (op-skeleton rep-loc)
-     "index"  0,
-      "property"  content,
-      "type"  "DOCUMENT_APPEND")])
 
 (defn-log document-delete-ops [rep-loc]
   [(assoc (op-skeleton rep-loc)
@@ -282,7 +284,7 @@ will not be present in the new structure."
 (defmethod update-rep-loc-ops "gadget" [rep-loc content]
   (log (gadget-submit-delta-ops rep-loc 
 				{(:key rep-loc) content
-				 "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"})))
+				 "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"})))
 
 (defmethod update-rep-loc-ops "blip" [rep-loc content]
   (log (document-delete-append-ops rep-loc content)))
@@ -305,8 +307,6 @@ will not be present in the new structure."
 
 
 ;;; Helper "API"
-
-(def *ctx*)
 
 (defmacro iterate-events [events listen-to for-args]
   `(let [~'modified-blip-ids
@@ -345,7 +345,7 @@ will not be present in the new structure."
   (blip-create-child-ops (:rep-loc *ctx*) "" (str (rand))))
 
 (defn-log modify-ggg [key val]
-  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}))
+  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"}))
 
 (defn-log current-rep-class []
   (containing-rep-class (*ctx* :rep-loc)))
@@ -377,7 +377,7 @@ will not be present in the new structure."
   (echo "ok!"))
 
 (defn submit-replication-delta [rep-key]
-  (we/gadget-submit-delta-ops (:rep-loc we/*ctx*) (into {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"} (for [[subkey val] (:subkeys @we/*last-clipboard*)] [(str rep-key subkey) val]))))
+  (we/gadget-submit-delta-ops (:rep-loc we/*ctx*) (into {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml"} (for [[subkey val] (:subkeys @we/*last-clipboard*)] [(str rep-key subkey) val]))))
 
 (defn-log replicate-gadget-key! [rep-key]
   (doseq [:let [{subkeys :subkeys source-key :source-key source-rep-loc :rep-loc} @*clipboard*] [subkey _] subkeys] 
@@ -411,7 +411,7 @@ will not be present in the new structure."
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
      (append-gadget-ops rep-loc 
-                        {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
+                        {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
                          "author" "avital@wavesandbox.com"
                          "_view.js" "// js"
                          "_view.html" "<!-- html -->"
@@ -434,7 +434,7 @@ will not be present in the new structure."
   (let [rep-loc (:rep-loc *ctx*)]
     (concat 
      (append-gadget-ops rep-loc 
-		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
+		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggb.xml",
 			"author" "avital@wavesandbox.com"
 			"_view.js" ""
 			"_view.html" ""
@@ -482,29 +482,35 @@ will not be present in the new structure."
 			      (assoc (:rep-loc *ctx*) :type "gadget" :key key)))
 	(gadget-submit-delta-ops (:rep-loc *ctx*) {"from-key" "*" "url" ((:gadget-state *ctx*) "url")})))))
 
+
+
 (defn-log handle-rep-keys []
-  (if-let [rep-key ((:gadget-state *ctx*) "rep-key")]  
-    (if (not= rep-key "*")
-      (let [rep-loc (:rep-loc *ctx*) 
-	    child-rep-loc (assoc rep-loc :blip-id "new-blip")
-	    annotate-str (str "This blip will be replicated to " rep-key)]
-      (replicate-replocs! (dissoc (assoc rep-loc :type "blip" :annotation-name "we/rep" :annotation-value rep-key) :blip-id) ;
-			  (assoc rep-loc :type "gadget" :key rep-key))
-      (concat
-
-       (blip-create-child-ops rep-loc "" "new-blip")
+  (if-let [rep-keys ((:gadget-state *ctx*) "rep-key")]
+    (if (not= rep-keys "*")
+      (apply concat 
+	     (for [rep-key (.split rep-keys, ",")]
+	       (let [rep-loc (:rep-loc *ctx*) 
+		     child-rep-loc (assoc rep-loc :blip-id "new-blip")
+		     annotate-str (str "This blip will be replicated to the gadget key " rep-key 
+				       ". Anything within this highlighted segment will be ignored during replication.")]
+		 
+		 (replicate-replocs! (dissoc (assoc rep-loc :type "blip" :annotation-name "we/rep" :annotation-value rep-key) :blip-id) ;
+				     (assoc rep-loc :type "gadget" :key rep-key))
+		 (concat
+		  
+		  (blip-create-child-ops rep-loc "" "new-blip")
 					; set an annotation on the whole blip that holds as a value the key we want to replicate to
-       (add-annotation-norange-ops  child-rep-loc "we/rep" rep-key)
+		  (add-annotation-norange-ops  child-rep-loc "we/rep" rep-key)
 					; insert an annotation that should NOT be replicated to let the user know this blip is replicated to a specific gadget key
-       (add-string-and-annotate-ops 
-	child-rep-loc
-	(str annotate-str "\n\n\n")
-	(count annotate-str)
-	"we/DNR")
-
-       (add-annotation-ops child-rep-loc "style/backgroundColor" 0 (count annotate-str) "rgb(255, 153, 0)")
-       
-       (gadget-submit-delta-ops rep-loc {"rep-key" "*" "url" ((:gadget-state *ctx*) "url")}))))))
+		  (add-string-and-annotate-ops 
+		   child-rep-loc
+		   (str annotate-str "\n")
+		   (count annotate-str)
+		   "we/DNR")
+					; mark previous annotation with another one to make sure the user notices it (a color annotation)
+		  (add-annotation-ops child-rep-loc "style/backgroundColor" 0 (count annotate-str) "rgb(255, 153, 0)")
+					; change the rep-key value to * so we won't repeat this function over and over
+		  (gadget-submit-delta-ops rep-loc {"rep-key" "*" "url" ((:gadget-state *ctx*) "url")}))))))))
 
 (defn-log handle-gadget-rep "TODO" []
   (concat
@@ -523,7 +529,7 @@ will not be present in the new structure."
   (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
    (iterate-events events-map "DOCUMENT_CHANGED"     
 		   (apply concat 
-			  (for [annotation (log (:annotations *ctx*)) 		  
+			  (for [annotation (:annotations *ctx*) 		  
 				:when (not= -1 (dig annotation "range" "start"))
 				:when (= "we/eval" (annotation "name"))
 				:let [start (dig annotation "range" "start") 
@@ -531,7 +537,7 @@ will not be present in the new structure."
 			    (binding [*ctx* (assoc *ctx* :cursor end)]
 			      (concat
 			       (delete-annotation annotation)
-			       (try (log (eval (read-string (subs (:content *ctx*) start end))))
+			       (try (eval (read-string (subs (:content *ctx*) start end)))
 				    (catch Throwable t 
 				      (log-exception t) (echo t))))))))))
 
@@ -540,8 +546,8 @@ will not be present in the new structure."
   (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
    (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
-(defn-log do-replication-by-json [events-map]
-  (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map)))
+;(defn-log do-replication-by-json [events-map]
+;  (do-replication @*rep-rules* (incoming-map-to-rep-ops events-map)))
 
 (defn-log allow-gadget-replication [events-map]
   (apply concat (iterate-events events-map "BLIP_SUBMITTED" (handle-gadget-rep))))
