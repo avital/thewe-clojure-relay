@@ -99,31 +99,45 @@ will not be present in the new structure."
 
 
 
+; reprules {_mixins, f1._mixins, f1._mixins} got rep-op {_mixins.23874293.AAA.jojo} cond: starts with _mixins.
 ; @todo: can this be better?
 ; checks whether the rep-op satisfies the rep-loc definition
 (defn-log match-rep-loc 
-  "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from rep-rules" 
-  [rep-op rep-loc]
-  (cond
-    (:blip-id rep-loc)			; replication is by blip-id and/or gadget key
-    (= (:rep-loc rep-op) rep-loc)
-    
-    (:subcontent rep-loc)		; replication is by subcontent
-    (and
-     (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
-     (.contains (:content rep-op) (:subcontent rep-loc)))
-    
-    (:annotation-name rep-loc)		; replication is by annotation
-    (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc))))
+  "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from the rep-class from rep-rules" 
+  [rep-op rep-class] 
+  (for [rep-loc rep-class 
+	:when
+	(cond 
+	  
+	  (and (:blip-id rep-loc) 
+	       (= (:rep-loc rep-op) rep-loc))
+	  false
+       
+	  (and (:subcontent rep-loc)	; replication is by subcontent
+	       (and
+		(= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
+		(.contains (:content rep-op) (:subcontent rep-loc))))
+	  false
+       
+	  (and (:annotation-name rep-loc) ; replication is by annotation
+	       (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc)))   
+	  false
+       
+	  :else
+	  true
+       
+	  )]
+
+    rep-loc))
+
 
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
 (defn-log do-replication [rep-rules rep-ops]
   (apply concat (for [rep-op rep-ops
 		      rep-class rep-rules 
-		      :when (some (partial match-rep-loc rep-op) rep-class)
-		      rep-loc rep-class 
-		      :when (and (rep-loc :blip-id) (not= rep-loc (:rep-loc rep-op)))]
-		  (update-rep-loc-ops rep-loc (:content rep-op)))))
+		      :let [rep-locs-to-send (match-rep-loc rep-op rep-class)]
+		      :when rep-locs-to-send] 
+		  (apply concat (for [rep-loc rep-locs-to-send] (update-rep-loc-ops rep-loc (:content rep-op)))))))
 
 
 ; ===============================================
