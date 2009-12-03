@@ -3,6 +3,7 @@
   (:use clojure.contrib.json.write)
   (:use clojure.set)
   (:use clojure.contrib.duck-streams)
+  (:use clojure.contrib.str-utils)
   (:import java.util.Date))
 
 ; =====================
@@ -20,7 +21,7 @@
             *clipboard* nil
             *last-clipboard* nil
             *other-wave* nil
-	    *mixins-db* {})
+	    *mixin-db* {})
 
 (def *ctx*)
 
@@ -96,13 +97,15 @@ will not be present in the new structure."
 (defn-log has-annotation [rep-op name val]
   (some #(and (= (% "name") name) (= (% "value") val)) (:annotations rep-op)))
 
+
+
 ; @todo: can this be better?
 ; checks whether the rep-op satisfies the rep-loc definition
 (defn-log match-rep-loc 
   "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from rep-rules" 
   [rep-op rep-loc]
   (cond
-    (:blip-id rep-loc)			; replication is by blip-id
+    (:blip-id rep-loc)			; replication is by blip-id and/or gadget key
     (= (:rep-loc rep-op) rep-loc)
     
     (:subcontent rep-loc)		; replication is by subcontent
@@ -116,9 +119,12 @@ will not be present in the new structure."
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
 (defn-log do-replication [rep-rules rep-ops]
   (apply concat (for [rep-op rep-ops
-		      rep-class rep-rules :when (some (partial match-rep-loc rep-op) rep-class)
-		      rep-loc rep-class :when (and (rep-loc :blip-id) (not= rep-loc (:rep-loc rep-op)))]
+		      rep-class rep-rules 
+		      :when (some (partial match-rep-loc rep-op) rep-class)
+		      rep-loc rep-class 
+		      :when (and (rep-loc :blip-id) (not= rep-loc (:rep-loc rep-op)))]
 		  (update-rep-loc-ops rep-loc (:content rep-op)))))
+
 
 ; ===============================================
 ; ======= Google Wave Incoming JSON Layer =======
@@ -227,6 +233,13 @@ will not be present in the new structure."
      "property"  content,
      "type"  "DOCUMENT_INSERT")])
 
+(defn-log document-insert-ops [rep-loc cursor content]
+  [(assoc (op-skeleton rep-loc) 
+     "index"  cursor,
+     "property"  content,
+     "type"  "DOCUMENT_INSERT")])
+
+
 (defn-log gadget-op-json [gadget-state]
   {"javaClass" "com.google.wave.api.Gadget",
    "properties" 
@@ -247,7 +260,7 @@ will not be present in the new structure."
     "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"))
 
 (defn-log gadget-submit-delta-ops [rep-loc state]
-  [(gadget-submit-delta-1-op rep-loc 
+  [ #_(gadget-submit-delta-1-op rep-loc 
 			     (into {} 
 				   (for [[key val] state] 
 				     [key (if (= key "url") val " ")]))) 
@@ -345,8 +358,8 @@ will not be present in the new structure."
 (defn-log create-child-blip [] 
   (blip-create-child-ops (:rep-loc *ctx*) "" (str (rand))))
 
-(defn-log modify-ggg [key val]
-  (gadget-submit-delta-ops (:rep-loc *ctx*) {key val "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml"}))
+(defn-log modify-ggg [state]
+  (gadget-submit-delta-ops (:rep-loc *ctx*) (assoc state "url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml")))
 
 (defn-log current-rep-class []
   (containing-rep-class (*ctx* :rep-loc)))
@@ -489,7 +502,7 @@ will not be present in the new structure."
   (if-let [rep-keys ((:gadget-state *ctx*) "blip-rep-keys")]
     (if (not= rep-keys "*")
       (apply concat 
-	     (for [rep-key (.split rep-keys, ",")]
+	     (for [rep-key (.split rep-keys ",")]
 	       (let [rep-loc (:rep-loc *ctx*) 
 		     child-rep-loc (assoc rep-loc :blip-id "new-blip")
 		     annotate-str (str "This blip will be replicated to the gadget key " rep-key 
@@ -517,6 +530,38 @@ will not be present in the new structure."
   (concat
    (handle-to-key)
    (handle-from-key)))
+
+(defn-log store-mixins 
+  "This stores gadget keys called mixins as they contain code we might want to use by name later"
+  []
+  (if-let [gadget-state (:gadget-state *ctx*)]
+    (swap! 
+     *mixin-db* 
+     into (for [[key val] gadget-state 
+		:when (and 
+		       (.startsWith key "_mixins.")
+		       (.endsWith key "._name"))
+		:let [code-key (str-join "." (assoc (vec (.split key "\\.")) 2 "_code"))]]
+	    [val {:rep-loc (assoc (:rep-loc *ctx*) :type "gadget" :key code-key) 			      
+		  :name-key key 
+		  :code (gadget-state code-key) 
+		  :code-key code-key}]))))
+
+(defn-log handle-mixin-rep-key
+  "This checks whether we got a key called 'mixin-rep-key' which will indicate we want to replicate to the current gadget a mixin we store in *mixin-db*"
+  []
+  (if-let [gadget-state (:gadget-state *ctx*)]
+    (if-let [cmd (gadget-state "mixin-rep-key")]
+      (if (not= cmd "*")
+	(let [mixin-rep (read-json cmd) 
+	      mixin (@*mixin-db* (mixin-rep "mixinName"))
+	      target-rep-loc (assoc (:rep-loc *ctx*) :type "gadget" :key (mixin-rep "key"))] 	
+	  (replicate-replocs!
+	   (:rep-loc mixin) 
+	   target-rep-loc)
+	  (concat
+	   (update-rep-loc-ops target-rep-loc (:code mixin))
+	   (update-rep-loc-ops (assoc target-rep-loc :key "mixin-rep-key") "*")))))))
 
 
 ;;; "Subrobots" to be used with thewe-0+...@appspot.com
@@ -557,7 +602,14 @@ will not be present in the new structure."
 (defn-log mother-shit [events-map]
   (concat 
    (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-    (iterate-events events-map "BLIP_SUBMITTED" (concat (handle-gadget-rep) (handle-rep-keys) (do-replication @*rep-rules* (blip-data-to-rep-ops blip-data)))))))
+    (iterate-events events-map "BLIP_SUBMITTED" 
+		    (do (store-mixins)
+			(concat 
+			 (handle-gadget-rep) 
+			 (handle-rep-keys) 
+			 (do-replication @*rep-rules* 
+					 (blip-data-to-rep-ops blip-data))
+			 (handle-mixin-rep-key)))))))
 
 
 
