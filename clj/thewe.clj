@@ -9,17 +9,43 @@
 ; ======= Atoms =======
 ; =====================
 
+; Atom File DB
+(defn atom-filename [name]
+  (str "/home/avital/swank/db/" name))
+
+(defn save-atom-to-file [name atom]
+  (spit (atom-filename name) @atom))
+
+(defn file-exists?
+  "Check to see if a file exists"
+  [file]
+  ((.exists (java.io.File. file))))
+
+(defn load-atom-from-file [name atom]
+  (let [file (atom-filename name)]
+    (if (file-exists? name)
+      (reset! atom (read-string (slurp (atom-filename name)))))))
+
+(defmacro save-atom [atom]
+  `(save-atom-to-file ~(.replace (str atom) "*" "") ~atom))
+
+(defmacro load-atom [atom]
+  `(load-atom-from-file ~(.replace (str atom) "*" "") ~atom))
+
+; Actual atoms
 (defmacro init-atoms 
   ([] nil)
   ([name initial-val & rest]
      `(do
-        (defonce ~name (atom ~initial-val))
+        (if-not (load-atom ~name)
+          (defonce ~name (atom ~initial-val)))
         ~`(init-atoms ~@rest))))
 
 (init-atoms *rep-rules* #{}
             *clipboard* nil
             *last-clipboard* nil
             *other-wave* nil)
+
 
 ; =========================
 ; ======= Utilities =======
