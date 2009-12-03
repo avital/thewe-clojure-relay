@@ -98,37 +98,44 @@ will not be present in the new structure."
   (some #(and (= (% "name") name) (= (% "value") val)) (:annotations rep-op)))
 
 
+(defn-log do-if-rep-op-in-rep-class [rep-op rep-class]
+  (apply concat 
+	 (for [rep-loc rep-class]
+	   (cond 
+	     
+	     (and (:blip-id rep-loc) 
+		  (= (:rep-loc rep-op) rep-loc))
+	     [rep-loc (fn [other-rep-loc] other-rep-loc)]
+	     
+	     (and (:subcontent rep-loc) ; replication is by subcontent
+		  (and
+		   (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
+		   (.contains (:content rep-op) (:subcontent rep-loc))))
+	     [rep-loc (fn [other-rep-loc] other-rep-loc)]
+	     
+	     (and (:annotation-name rep-loc) ; replication is by annotation
+		  (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc)))   
+	     [rep-loc (fn [other-rep-loc] other-rep-loc)]
+	     
+	     (and (.startsWith (dig rep-op :rep-loc :key) (rep-loc :key))
+		  (not= (dig rep-op :rep-loc :key) (rep-loc :key)))
+	     [rep-loc fn [other-rep-loc] (assoc other-rep-loc :key (.replaceFirst (:rep-loc rep-op) rep-loc other-rep-loc)))]
+	     
+	     :else
+	     nil
+	     ))
+	 ))
 
-; reprules {_mixins, f1._mixins, f1._mixins} got rep-op {_mixins.23874293.AAA.jojo} cond: starts with _mixins.
+; repclass {f1.XX, _mixins.AAA, f2} got rep-op {_mixins.AAA.23874293.AAA.jojo} cond: starts with _mixins -
+; we want to send: {f1.XX.238..... f2.238... with the value}
+
 ; @todo: can this be better?
 ; checks whether the rep-op satisfies the rep-loc definition
 (defn-log match-rep-loc 
   "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from the rep-class from rep-rules" 
   [rep-op rep-class] 
-  (for [rep-loc rep-class 
-	:when
-	(cond 
-	  
-	  (and (:blip-id rep-loc) 
-	       (= (:rep-loc rep-op) rep-loc))
-	  false
-       
-	  (and (:subcontent rep-loc)	; replication is by subcontent
-	       (and
-		(= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
-		(.contains (:content rep-op) (:subcontent rep-loc))))
-	  false
-       
-	  (and (:annotation-name rep-loc) ; replication is by annotation
-	       (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc)))   
-	  false
-       
-	  :else
-	  true
-       
-	  )]
-
-    rep-loc))
+  (if-let [[rep-loc do-if] (do-if-rep-op-in-rep-class rep-op rep-class)] 
+    (for [dest-rep-loc (disj rep-class rep-loc)] (do-if rep-loc))))
 
 
 ; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
