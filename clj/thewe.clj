@@ -158,33 +158,55 @@ will not be present in the new structure."
 (defn-log has-annotation [rep-op name val]
   (some #(and (= (% "name") name) (= (% "value") val)) (:annotations rep-op)))
 
-
-
-; @todo: can this be better?
-; checks whether the rep-op satisfies the rep-loc definition
-(defn-log match-rep-loc 
-  "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from rep-rules" 
-  [rep-op rep-loc]
-  (cond
-    (:blip-id rep-loc)			; replication is by blip-id and/or gadget key
-    (= (:rep-loc rep-op) rep-loc)
+(defn-log transformation-function-if-match-rep-loc [rep-op rep-loc]
+  (let [rep-op-key (dig rep-op :rep-loc :key)
+	rep-loc-key (:key rep-loc)]
+    (cond 
+      
+      (and (:blip-id rep-loc) 
+	   (= (:rep-loc rep-op) rep-loc))
+      identity
     
-    (:subcontent rep-loc)		; replication is by subcontent
-    (and
-     (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
-     (.contains (:content rep-op) (:subcontent rep-loc)))
+      (and (:subcontent rep-loc)	; replication is by subcontent
+	   (and
+	    (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
+	    (.contains (:content rep-op) (:subcontent rep-loc))))
+      identity
     
-    (:annotation-name rep-loc)		; replication is by annotation
-    (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc))))
+      (and (:annotation-name rep-loc)	; replication is by annotation
+	   (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc)))   
+      identity
+    
+    
+      (and
+       rep-op-key
+       (equal-rep-loc rep-loc (:rep-loc rep-op))
+       (or
+	(= rep-op-key rep-loc-key) ; normal gadget-gadget replication
+	(and ; hyper replication
+	 (.startsWith rep-op-key (str rep-loc-key "."))
+	 (not= rep-op-key rep-loc-key))))
+      (fn [other-rep-loc] 
+	(assoc other-rep-loc :key 
+	       (.replaceFirst rep-op-key rep-loc-key (:key other-rep-loc))))
 
-; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
-(defn-log do-replication [rep-rules rep-ops]
-  (apply concat (for [rep-op rep-ops
-		      rep-class rep-rules 
-		      :when (some (partial match-rep-loc rep-op) rep-class)
-		      rep-loc rep-class 
-		      :when (and (rep-loc :blip-id) (not= rep-loc (:rep-loc rep-op)))]
-		  (update-rep-loc-ops rep-loc (:content rep-op)))))
+      :else
+      nil)))
+
+
+(defn-log do-replication 
+  "Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon"
+  [rep-rules rep-ops]
+  (apply concat 
+	 (for [rep-op rep-ops
+	       rep-class @*rep-rules*
+	       rep-loc rep-class
+	       :let [trans-func (transformation-function-if-match-rep-loc rep-op rep-loc)]
+	       :when trans-func]
+	   (apply concat 
+		  (for [other-rep-loc (disj rep-class rep-loc)] 
+		    (update-rep-loc-ops (trans-func other-rep-loc) (:content rep-op)))))))
+
 
 
 ; ===============================================
@@ -547,14 +569,19 @@ will not be present in the new structure."
       (reset! *clipboard* {:rep-loc (:rep-loc *ctx*) :to-key to-key})
       (gadget-submit-delta-ops (:rep-loc *ctx*) {"to-key" "*" "url" ((:gadget-state *ctx*) "url")}))))
 
+;;;; ***
+(comment (doseq [[key val] (:gadget-state *ctx*) 
+		:when (or (= key from-key) (.startsWith key (str from-key ".")))]
+	  (replicate-replocs! (assoc source-rep-loc :type "gadget" :key (.replaceFirst key from-key to-key))
+			      (assoc (:rep-loc *ctx*) :type "gadget" :key key))))
+;;; ***
+
 (defn-log handle-from-key []
   (if-let [from-key ((:gadget-state *ctx*) "from-key")]  
     (if (not= from-key "*")
-      (when-let [{to-key :to-key source-rep-loc :rep-loc} @*clipboard*]
-	(doseq [[key val] (:gadget-state *ctx*) 
-		:when (or (= key from-key) (.startsWith key (str from-key ".")))]
-	  (replicate-replocs! (assoc source-rep-loc :type "gadget" :key (.replaceFirst key from-key to-key))
-			      (assoc (:rep-loc *ctx*) :type "gadget" :key key)))
+      (when-let [{to-key :to-key source-rep-loc :rep-loc} @*clipboard*] ;hyper: to-key: f1._mixins [from-key: ggg._mixins key: ggg._mixins.2345345....]
+	(replicate-replocs! (assoc source-rep-loc :type "gadget" :key to-key)
+			      (assoc (:rep-loc *ctx*) :type "gadget" :key from-key))
 	(gadget-submit-delta-ops (:rep-loc *ctx*) {"from-key" "*" "url" ((:gadget-state *ctx*) "url")})))))
 
 
@@ -567,7 +594,8 @@ will not be present in the new structure."
 	       (let [rep-loc (:rep-loc *ctx*) 
 		     child-rep-loc (assoc rep-loc :blip-id "new-blip")
 		     annotate-str (str "This blip will be replicated to the gadget key " rep-key 
-				       ". Anything within this highlighted segment will be ignored during replication.")]
+				       ". Anything within this highlighted segment will be ignored during replication.")
+		     key-val (dig *ctx* :gadget-state rep-key)]
 		 
 		 (replicate-replocs! (dissoc (assoc rep-loc :type "blip" :annotation-name "we/rep" :annotation-value rep-key) :blip-id) ;
 				     (assoc rep-loc :type "gadget" :key rep-key))
@@ -582,8 +610,12 @@ will not be present in the new structure."
 		   (str annotate-str "\n")
 		   (count annotate-str)
 		   "we/DNR")
-					; mark previous annotation with another one to make sure the user notices it (a color annotation)
+     					; mark previous annotation with another one to make sure the user notices it (a color annotation)
 		  (add-annotation-ops child-rep-loc "style/backgroundColor" 0 (count annotate-str) "rgb(255, 153, 0)")
+					; insert current value to blip (if exists)
+		  (if key-val
+		    (document-insert-ops child-rep-loc
+					 (inc (count annotate-str)) key-val))
 					; change the rep-key value to * so we won't repeat this function over and over
 		  (gadget-submit-delta-ops rep-loc {"blip-rep-keys" "*" "url" ((:gadget-state *ctx*) "url")}))))))))
 
