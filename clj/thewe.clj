@@ -97,54 +97,55 @@ will not be present in the new structure."
 (defn-log has-annotation [rep-op name val]
   (some #(and (= (% "name") name) (= (% "value") val)) (:annotations rep-op)))
 
+(defn-log transformation-function-if-match-rep-loc [rep-op rep-loc]
+  (let [rep-op-key (dig rep-op :rep-loc :key)
+	rep-loc-key (:key rep-loc)]
+    (cond 
+      
+      (and (:blip-id rep-loc) 
+	   (= (:rep-loc rep-op) rep-loc))
+      identity
+    
+      (and (:subcontent rep-loc)	; replication is by subcontent
+	   (and
+	    (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
+	    (.contains (:content rep-op) (:subcontent rep-loc))))
+      identity
+    
+      (and (:annotation-name rep-loc)	; replication is by annotation
+	   (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc)))   
+      identity
+    
+    
+      (and
+       rep-op-key
+       (equal-rep-loc rep-loc (:rep-loc rep-op))
+       (or
+	(= rep-op-key rep-loc-key) ; normal gadget-gadget replication
+	(and ; hyper replication
+	 (.startsWith rep-op-key (str rep-loc-key "."))
+	 (not= rep-op-key rep-loc-key))))
+      (fn [other-rep-loc] 
+	(assoc other-rep-loc :key 
+	       (.replaceFirst rep-op-key rep-loc-key (:key other-rep-loc))))
 
-(defn-log do-if-rep-op-in-rep-class [rep-op rep-class]
+      :else
+      nil)))
+
+
+(defn-log do-replication 
+  "Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon"
+  [rep-rules rep-ops]
   (apply concat 
-	 (for [rep-loc rep-class]
-	   (cond 
-	     
-	     (and (:blip-id rep-loc) 
-		  (= (:rep-loc rep-op) rep-loc))
-	     [rep-loc (fn [other-rep-loc] other-rep-loc)]
-	     
-	     (and (:subcontent rep-loc) ; replication is by subcontent
-		  (and
-		   (= (dissoc (:rep-loc rep-op) :blip-id) (dissoc rep-loc :blip-id :subcontent))
-		   (.contains (:content rep-op) (:subcontent rep-loc))))
-	     [rep-loc (fn [other-rep-loc] other-rep-loc)]
-	     
-	     (and (:annotation-name rep-loc) ; replication is by annotation
-		  (has-annotation rep-op (:annotation-name rep-loc) (:annotation-value rep-loc)))   
-	     [rep-loc (fn [other-rep-loc] other-rep-loc)]
-	     
-	     (and (.startsWith (dig rep-op :rep-loc :key) (rep-loc :key))
-		  (not= (dig rep-op :rep-loc :key) (rep-loc :key)))
-	     [rep-loc fn [other-rep-loc] (assoc other-rep-loc :key (.replaceFirst (:rep-loc rep-op) rep-loc other-rep-loc)))]
-	     
-	     :else
-	     nil
-	     ))
-	 ))
+	 (for [rep-op rep-ops
+	       rep-class @*rep-rules*
+	       rep-loc rep-class
+	       :let [trans-func (transformation-function-if-match-rep-loc rep-op rep-loc)]
+	       :when trans-func]
+	   (apply concat 
+		  (for [other-rep-loc (disj rep-class rep-loc)] 
+		    (update-rep-loc-ops (trans-func other-rep-loc) (:content rep-op)))))))
 
-; repclass {f1.XX, _mixins.AAA, f2} got rep-op {_mixins.AAA.23874293.AAA.jojo} cond: starts with _mixins -
-; we want to send: {f1.XX.238..... f2.238... with the value}
-
-; @todo: can this be better?
-; checks whether the rep-op satisfies the rep-loc definition
-(defn-log match-rep-loc 
-  "in this context rep-op is the incoming rep-op, rep-loc is what is for comparison from the rep-class from rep-rules" 
-  [rep-op rep-class] 
-  (if-let [[rep-loc do-if] (do-if-rep-op-in-rep-class rep-op rep-class)] 
-    (for [dest-rep-loc (disj rep-class rep-loc)] (do-if rep-loc))))
-
-
-; Receives rep-rules and incoming rep-ops and returns rep-ops to be acted upon
-(defn-log do-replication [rep-rules rep-ops]
-  (apply concat (for [rep-op rep-ops
-		      rep-class rep-rules 
-		      :let [rep-locs-to-send (match-rep-loc rep-op rep-class)]
-		      :when rep-locs-to-send] 
-		  (apply concat (for [rep-loc rep-locs-to-send] (update-rep-loc-ops rep-loc (:content rep-op)))))))
 
 
 ; ===============================================
@@ -507,14 +508,19 @@ will not be present in the new structure."
       (reset! *clipboard* {:rep-loc (:rep-loc *ctx*) :to-key to-key})
       (gadget-submit-delta-ops (:rep-loc *ctx*) {"to-key" "*" "url" ((:gadget-state *ctx*) "url")}))))
 
+;;;; ***
+(comment (doseq [[key val] (:gadget-state *ctx*) 
+		:when (or (= key from-key) (.startsWith key (str from-key ".")))]
+	  (replicate-replocs! (assoc source-rep-loc :type "gadget" :key (.replaceFirst key from-key to-key))
+			      (assoc (:rep-loc *ctx*) :type "gadget" :key key))))
+;;; ***
+
 (defn-log handle-from-key []
   (if-let [from-key ((:gadget-state *ctx*) "from-key")]  
     (if (not= from-key "*")
-      (when-let [{to-key :to-key source-rep-loc :rep-loc} @*clipboard*]
-	(doseq [[key val] (:gadget-state *ctx*) 
-		:when (or (= key from-key) (.startsWith key (str from-key ".")))]
-	  (replicate-replocs! (assoc source-rep-loc :type "gadget" :key (.replaceFirst key from-key to-key))
-			      (assoc (:rep-loc *ctx*) :type "gadget" :key key)))
+      (when-let [{to-key :to-key source-rep-loc :rep-loc} @*clipboard*] ;hyper: to-key: f1._mixins [from-key: ggg._mixins key: ggg._mixins.2345345....]
+	(replicate-replocs! (assoc source-rep-loc :type "gadget" :key to-key)
+			      (assoc (:rep-loc *ctx*) :type "gadget" :key from-key))
 	(gadget-submit-delta-ops (:rep-loc *ctx*) {"from-key" "*" "url" ((:gadget-state *ctx*) "url")})))))
 
 
