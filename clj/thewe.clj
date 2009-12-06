@@ -11,35 +11,41 @@
 ; =====================
 
 ; Atom File DB
+
 (defn atom-filename [name]
   (str "/home/avital/swank/db/" name))
 
-(defn save-atom-to-file [name atom]
-  (spit (atom-filename name) @atom))
+
+; Reading Atoms
 
 (defn file-exists?
   "Check to see if a file exists"
   [file]
-  ((.exists (java.io.File. file))))
+  (.exists (java.io.File. file)))
 
-(defn load-atom-from-file [name atom]
+(defn load-atom-from-file [name]
   (let [file (atom-filename name)]
-    (if (file-exists? name)
-      (reset! atom (read-string (slurp (atom-filename name)))))))
-
-(defmacro save-atom [atom]
-  `(save-atom-to-file ~(.replace (str atom) "*" "") ~atom))
+    (if (file-exists? file)
+      (read-string (slurp file)))))
 
 (defmacro load-atom [atom]
-  `(load-atom-from-file ~(.replace (str atom) "*" "") ~atom))
+  `(load-atom-from-file ~(.replace (str atom) "*" "")))
+
+(def *db-atoms* {})
+
 
 ; Actual atoms
+
 (defmacro init-atoms 
   ([] nil)
   ([name initial-val & rest]
      `(do
-        (if-not (load-atom ~name)
-          (defonce ~name (atom ~initial-val)))
+        (defonce ~name nil)
+        (if-not ~name
+          (if-let [db-val# (load-atom ~name)]
+            (def ~name (atom db-val#))
+            (def ~name (atom ~initial-val))))
+        (alter-var-root #'*db-atoms* assoc '~name ~name)
         ~`(init-atoms ~@rest))))
 
 (init-atoms *rep-rules* #{}
@@ -48,8 +54,37 @@
             *other-wave* nil
 	    *mixin-db* {})
 
-(def *ctx*)
 
+; Saving Atoms
+
+(defn save-atom-to-file [name atom]
+  (spit (atom-filename name) @atom))
+
+(defn save-atom [name atom]
+  (save-atom-to-file (.replace (str name) "*" "") atom))
+
+(defn save-atoms []
+  (doseq [[name atom] *db-atoms*]
+    (save-atom name atom)))
+
+; Thanks to Jonathan Smith
+(defn periodicly [fun time]
+  "starts a thread that calls function every time ms"
+  (let [thread (new Thread (fn [] (loop [] (fun) (Thread/sleep time)
+(recur))))]
+    (.start thread)
+    thread)) 
+
+(defonce save-periodically false)
+
+(when-not save-periodically
+  (periodicly save-atoms 25000)
+  (def save-periodically true))
+
+
+
+; Some global vars
+(def *ctx*)
 
 ; =========================
 ; ======= Utilities =======
@@ -286,7 +321,7 @@ will not be present in the new structure."
     "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"))
 
 (defn-log gadget-submit-delta-ops [rep-loc state]
-  [ #_(gadget-submit-delta-1-op rep-loc 
+  [(gadget-submit-delta-1-op rep-loc 
 			     (into {} 
 				   (for [[key val] state] 
 				     [key (if (= key "url") val " ")]))) 
