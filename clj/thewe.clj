@@ -533,7 +533,8 @@ will not be present in the new structure."
 	       (let [rep-loc (:rep-loc *ctx*) 
 		     child-rep-loc (assoc rep-loc :blip-id "new-blip")
 		     annotate-str (str "This blip will be replicated to the gadget key " rep-key 
-				       ". Anything within this highlighted segment will be ignored during replication.")]
+				       ". Anything within this highlighted segment will be ignored during replication.")
+		     key-val (dig *ctx* :gadget-state rep-key)]
 		 
 		 (replicate-replocs! (dissoc (assoc rep-loc :type "blip" :annotation-name "we/rep" :annotation-value rep-key) :blip-id) ;
 				     (assoc rep-loc :type "gadget" :key rep-key))
@@ -548,8 +549,12 @@ will not be present in the new structure."
 		   (str annotate-str "\n")
 		   (count annotate-str)
 		   "we/DNR")
-					; mark previous annotation with another one to make sure the user notices it (a color annotation)
+     					; mark previous annotation with another one to make sure the user notices it (a color annotation)
 		  (add-annotation-ops child-rep-loc "style/backgroundColor" 0 (count annotate-str) "rgb(255, 153, 0)")
+					; insert current value to blip (if exists)
+		  (if key-val
+		    (document-insert-ops child-rep-loc
+					 (inc (count annotate-str)) key-val))
 					; change the rep-key value to * so we won't repeat this function over and over
 		  (gadget-submit-delta-ops rep-loc {"blip-rep-keys" "*" "url" ((:gadget-state *ctx*) "url")}))))))))
 
