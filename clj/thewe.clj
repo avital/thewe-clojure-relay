@@ -12,8 +12,10 @@
 
 ; Atom File DB
 
+(def atom-base-dir "/home/avital/swank/db/")
+
 (defn atom-filename [name]
-  (str "/home/avital/swank/db/" name))
+  (str atom-base-dir name))
 
 
 ; Reading Atoms
