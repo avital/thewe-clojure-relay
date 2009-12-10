@@ -12,7 +12,7 @@
 
 ; Atom File DB
 
-(def atom-base-dir "/home/avital/swank/db/")
+(def atom-base-dir "/home/avital/swank/db")
 
 (defn atom-filename [name]
   (str atom-base-dir name))
@@ -112,6 +112,11 @@ will not be present in the new structure."
 	    (dissoc m k)))
       m)
     (dissoc m k)))
+
+(defn assoc-in-x 
+  ([map] map) 
+  ([map path val & rest]
+     (apply assoc-in-x `[~(assoc-in map path val) ~@rest])))
 
 
 ; =========================================
@@ -228,9 +233,9 @@ will not be present in the new structure."
 
 (defn-log blip-data-to-rep-ops [blip-data]
   (let [basic-rep-loc {:wave-id (blip-data "waveId"), :wavelet-id (blip-data "waveletId"), :blip-id (blip-data "blipId")}]
-    (if-let [gadget-map (first (dig blip-data "elements" "map"))]
+    (if-let [gadget-map (first (dig blip-data "elements"))]
 					; there is a gadget here
-      (let [gadget-state (dig (val gadget-map) "properties" "map")]
+      (let [gadget-state (dig (val gadget-map) "properties")]
         (for [[k v] gadget-state]
           {:rep-loc (assoc basic-rep-loc :type "gadget" :key k) :content v}))
 
@@ -254,130 +259,113 @@ will not be present in the new structure."
 ; outgoing-map:  Some crazy Google format of a map that contains information on which
 ;                operations the robot will do
 
+(defn kill-nil [m]
+  (into {} (filter #(second %) m)))
+
+(defn-log params [rep-loc] 
+  (kill-nil 
+   {"waveId" (:wave-id rep-loc)
+    "waveletId" (:wavelet-id rep-loc)
+    "blipId" (:blip-id rep-loc)}))
+
 (defn-log op-skeleton [rep-loc] 
-  (let [wave-id (:wave-id rep-loc)
-	wavelet-id (:wavelet-id rep-loc)
-	blip-id (:blip-id rep-loc)]
-    {"waveId" wave-id
-     "waveletId" wavelet-id
-     "blipId" blip-id
-     "javaClass"  "com.google.wave.api.impl.OperationImpl"}))
+  {"params" (params rep-loc)
+   "id" (str (rand))})
 
-(defn-log document-append-ops [rep-loc content]
-  [(assoc (op-skeleton rep-loc)
-     "index"  0,
-      "property"  content,
-      "type"  "DOCUMENT_APPEND")])
+(defn-log modify-how-json [modify-how values elements]
+  (kill-nil
+   {"modifyHow" modify-how 
+    "values" values
+    "elements" elements}))
 
-(defn-log document-delete-append-ops [rep-loc content]
-  (concat
-  [(assoc (op-skeleton rep-loc)
-     "index"  -1,
-      "property"  nil,
-      "type"  "DOCUMENT_DELETE")]
-   (document-append-ops rep-loc content)))
+(defn-log modify-query-json [restrictions max-res element-match]
+  {"restrictions" restrictions
+    "maxRes" max-res 
+    "elementMatch" element-match})
 
-(defn-log document-delete-ops [rep-loc]
-  [(assoc (op-skeleton rep-loc)
-     "index"  -1,
-     "property"  nil,
-     "type"  "DOCUMENT_DELETE")])
+(defn-log document-modify-ops 
+  [rep-loc range modify-query-json modify-how-json]
+  [(kill-nil 
+    (assoc-in-x (op-skeleton rep-loc) 
+                ["method"] "document.modify"
+                ["params" "modifyAction"] modify-how-json
+                ["params" "range"] range
+                ["params" "modifyQuery"] modify-query-json))])
 
 (defn-log range-json [start end] 
-  {"end" end, "javaClass" "com.google.wave.api.Range", "start" start})
+  {"end" end, "start" start})
 
-(defn-log annotation-op-json [name range value]
-  {"javaClass" "com.google.wave.api.Annotation",
-   "value" value,
-   "name" name,
-   "range" range})
+(defn-log document-insert-ops [rep-loc cursor content]
+  [(document-modify-ops rep-loc 
+                        (range-json cursor (+ cursor (count content))) 
+                        nil
+                        (modify-how-json "INSERT" [content] nil))])
 
-(defn-log delete-annotation-ops [rep-loc start end]
-  [(assoc (op-skeleton rep-loc)
-     "index" -1,
-     "property" (range-json start end),
-     "type" "DOCUMENT_ANNOTATION_DELETE")])
+(defn-log document-append-ops [rep-loc content]
+  [(document-modify-ops rep-loc nil nil
+                         (modify-how-json "INSERT_AFTER" [content] nil))])
 
-(defn-log add-annotation-ops [rep-loc name start end value]
-  [(assoc (op-skeleton rep-loc)
-     "index" 0,
-     "property" (annotation-op-json name (range-json start end) value),
-     "type" "DOCUMENT_ANNOTATION_SET")])
+(defn-log document-delete-ops [rep-loc content]
+  [(document-modify-ops rep-loc nil nil
+                         (modify-how-json "DELETE" nil nil))])
+
+(defn-log document-delete-append-ops [rep-loc content]
+  (concat (document-delete-ops rep-loc) (document-append-ops rep-loc content)))
+
+(defn-log add-annotation-ops [rep-loc name range value]
+  [(document-modify-ops rep-loc range nil
+                         (assoc 
+                             (modify-how-json
+                              "ANNOTATE" [value] nil) :annotationKey name))])
+
+(defn-log delete-annotation-ops [rep-loc name range]
+  [(document-modify-ops rep-loc range nil
+                         (assoc 
+                             (modify-how-json
+                              "CLEAR_ANNOTATION" nil nil) :annotationKey name))])
 
 (defn-log add-annotation-norange-ops [rep-loc name value]
-  [(assoc (op-skeleton rep-loc)
-     "index" 0,
-     "property" (annotation-op-json name nil value),
-     "type" "DOCUMENT_ANNOTATION_SET_NORANGE")])
+  [(document-modify-ops rep-loc nil nil
+                         (assoc 
+                             (modify-how-json
+                              "ANNOTATE" [value] nil) :annotationKey name))])
 
-; @todo: what is the difference between using "append" and :append?
+; @TODO  - this is horrible, should talk about why this is here.
+(defn-log gadget-state-rep-loc [rep-loc]
+  (into {} 
+        (map #(vec `(~(.replace (.replace (str (key %)) "-" "") ":" "") ~(val %))) rep-loc)))
 
-(defn-log document-insert-ops [rep-loc cursor content]
-  [(assoc (op-skeleton rep-loc) 
-     "index"  cursor,
-     "property"  content,
-     "type"  "DOCUMENT_INSERT")])
-
-(defn-log document-insert-ops [rep-loc cursor content]
-  [(assoc (op-skeleton rep-loc) 
-     "index"  cursor,
-     "property"  content,
-     "type"  "DOCUMENT_INSERT")])
-
-
-(defn-log gadget-op-json [gadget-state]
-  {"javaClass" "com.google.wave.api.Gadget",
-   "properties" 
-   {"map" gadget-state
-    "javaClass" "java.util.HashMap"},
+(defn-log gadget-op-json [rep-loc gadget-state]
+  {"properties" (merge gadget-state (gadget-state-rep-loc rep-loc))
    "type" "GADGET"})
 
 (defn-log append-gadget-ops [rep-loc gadget-state]
-  [(assoc (op-skeleton rep-loc)
-     "index" 0,
-     "property" (gadget-op-json gadget-state),
-     "type" "DOCUMENT_ELEMENT_APPEND")])
+  [(document-modify-ops rep-loc nil nil
+                        (modify-how-json "INSERT_AFTER" nil 
+                                         (gadget-op-json rep-loc gadget-state)))])
 
-(defn-log gadget-submit-delta-1-op [rep-loc state]
-  (assoc (op-skeleton rep-loc)
-    "index" -1,
-    "property" (gadget-op-json state),
-    "type" "DOCUMENT_ELEMENT_MODIFY_ATTRS"))
-
+; @TODO - should check if we should re-do the escaping workaround with the " "
 (defn-log gadget-submit-delta-ops [rep-loc state]
-  [(gadget-submit-delta-1-op rep-loc 
-			     (into {} 
-				   (for [[key val] state] 
-				     [key (if (= key "url") val " ")]))) 
-   (gadget-submit-delta-1-op rep-loc state)])
-
-(defn-log blip-data-op-json [rep-loc content]
-  (assoc (op-skeleton rep-loc)
-    "lastModifiedTime" -1,
-    "contributors" {"javaClass" "java.util.ArrayList",
-		    "list" []},
-    "parentBlipId" nil,
-    "version" -1,
-    "creator" nil,
-    "content" content,
-    "javaClass" "com.google.wave.api.impl.BlipData",
-    "annotations" {"javaClass" "java.util.ArrayList",
-		   "list" []},
-    "elements" {"map" {},"javaClass" "java.util.HashMap"},
-    "childBlipIds" {"javaClass" "java.util.ArrayList",
-		    "list" []}))
+  [(document-modify-ops rep-loc nil 
+                        (modify-query-json {"url" ("url" state)} 1 "GADGET")
+                        (modify-how-json "UPDATE_ELEMENT" nil 
+                                         (gadget-op-json rep-loc (dissoc state "url"))))])
 
 (defn-log blip-create-child-ops [rep-loc content new-id]
-  [(assoc (op-skeleton rep-loc) 
-     "index" -1,
-     "property" (blip-data-op-json (assoc rep-loc :blip-id new-id) content),
-     "type" "BLIP_CREATE_CHILD")])
+  [(assoc-in-x 
+     (op-skeleton (assoc rep-loc :blip-id nil))
+     ["method"] "wavelet.appendBlip"
+     ["params" "blipData"]
+     (assoc (params (assoc rep-loc :blip-id new-id))
+       "content" content))])
 
-(defn operation-bundle-json [ops]
-  {"javaClass"  "com.google.wave.api.impl.OperationMessageBundle",
-   "operations"  {"javaClass"  "java.util.ArrayList",
-                  "list"  ops}
-   "version"  "106"}) ; @todo deal with version
+(defn-log operation-bundle-json [ops]
+  (concat 
+   [{"params" {"capabilitiesHash" "0xcada92e"} 
+     "method" "robot.notifyCapabilitiesHash"
+     "id" "0"}]
+   ops))                                ; @todo deal with version
+
 
 
 (defmethod update-rep-loc-ops "gadget" [rep-loc content]
@@ -391,7 +379,7 @@ will not be present in the new structure."
 (defn-log add-string-and-annotate-ops [rep-loc str annotate-until annotation-name]
   (concat
    (document-insert-ops rep-loc 0 str)
-   (add-annotation-ops rep-loc annotation-name 0 annotate-until "nothing")))
+   (add-annotation-ops rep-loc annotation-name (range-json 0 annotate-until) "nothing")))
 
 (defn-log add-string-and-eval-ops [rep-loc str]
   (add-string-and-annotate-ops rep-loc 0 str (count str) "we/eval"))
@@ -403,24 +391,22 @@ will not be present in the new structure."
 
 ;;; Utilities
 
-
-
 ;;; Helper "API"
 
 (defmacro iterate-events [events listen-to for-args]
   `(let [~'modified-blip-ids
-	 (for [~'event (dig ~events "events" "list")
+	 (for [~'event (dig ~events "events")
 	       :when (not (.endsWith (~'event "modifiedBy") "@a.gwave.com"))
 	       :when (= (~'event "type") ~listen-to)]
-	   (dig ~'event "properties" "map" "blipId"))]
+	   (dig ~'event "properties" "blipId"))]
      (for [~'blip-id ~'modified-blip-ids
-	   :let [~'blip-data (dig ~events "blips" "map" ~'blip-id)
+	   :let [~'blip-data (dig ~events "blips" ~'blip-id)
 		 ~'content (~'blip-data "content")		 
-		 ~'blip-annotations (dig ~'blip-data "annotations" "list")		 
+		 ~'blip-annotations (dig ~'blip-data "annotations")		 
 		 ~'rep-loc {:type "blip"  :wave-id (~'blip-data "waveId") :wavelet-id (~'blip-data "waveletId") :blip-id (~'blip-data "blipId")}
-		 ~'first-gadget-map (first (dig ~'blip-data "elements" "map"))
-		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties" "map") {})]] 
-       (binding [~'*ctx* (log {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state})] ~for-args))))
+		 ~'first-gadget-map (first (dig ~'blip-data "elements"))
+		 ~'gadget-state (if ~'first-gadget-map (dig (val ~'first-gadget-map) "properties") {})]] 
+       (binding [~'*ctx* (we/log {:rep-loc ~'rep-loc :content ~'content :annotations ~'blip-annotations :gadget-state ~'gadget-state})] ~for-args))))
 
 
 
@@ -428,8 +414,9 @@ will not be present in the new structure."
 
 (defn-log delete-annotation [annotation]
   (delete-annotation-ops (:rep-loc *ctx*) 
-	 (dig annotation "range" "start")
-	 (dig annotation "range" "end")))
+                         (annotation "name")
+                         (range-json (dig annotation "range" "start")
+                                     (dig annotation "range" "end"))))
 
 (defn-log echo [s]
   (document-insert-ops (:rep-loc *ctx*) (:cursor *ctx*) (str \newline s)))
@@ -560,9 +547,6 @@ will not be present in the new structure."
     (concat 
      (blip-create-child-ops rep-loc "" "view-dev")
      (add-string-and-eval-ops (assoc rep-loc :blip-id "view-dev") str-to-annotate))))
-
-(def op-map-path ["property" "properties" "map"])
-
 
 ;;; Utilities for gadget-initiated replication
 (defn-log handle-to-key []
