@@ -260,7 +260,7 @@ will not be present in the new structure."
 ;                operations the robot will do
 
 (defn kill-nil [m]
-  (into {} (filter #(second %) m)))
+  (into {} (for [[key val] m :when val] [key (if (map? val) (kill-nil val) val)])))
 
 (defn-log params [rep-loc] 
   (kill-nil 
@@ -283,49 +283,49 @@ will not be present in the new structure."
     "maxRes" max-res 
     "elementMatch" element-match})
 
-(defn-log document-modify-ops 
-  [rep-loc range modify-query-json modify-how-json]
-  [(kill-nil 
-    (assoc-in-x (op-skeleton rep-loc) 
-                ["method"] "document.modify"
-                ["params" "modifyAction"] modify-how-json
-                ["params" "range"] range
-                ["params" "modifyQuery"] modify-query-json))])
+(defn-log document-modify-json 
+  [rep-loc range modify-query modify-how]
+  (kill-nil 
+   (assoc-in-x (op-skeleton rep-loc) 
+               ["method"] "document.modify"
+               ["params" "modifyAction"] modify-how
+               ["params" "range"] range
+               ["params" "modifyQuery"] modify-query)))
 
 (defn-log range-json [start end] 
   {"end" end, "start" start})
 
 (defn-log document-insert-ops [rep-loc cursor content]
-  [(document-modify-ops rep-loc 
+  [(document-modify-json rep-loc 
                         (range-json cursor (+ cursor (count content))) 
                         nil
                         (modify-how-json "INSERT" [content] nil))])
 
 (defn-log document-append-ops [rep-loc content]
-  [(document-modify-ops rep-loc nil nil
+  [(document-modify-json rep-loc nil nil
                          (modify-how-json "INSERT_AFTER" [content] nil))])
 
-(defn-log document-delete-ops [rep-loc content]
-  [(document-modify-ops rep-loc nil nil
+(defn-log document-delete-ops [rep-loc]
+  [(document-modify-json rep-loc nil nil
                          (modify-how-json "DELETE" nil nil))])
 
 (defn-log document-delete-append-ops [rep-loc content]
   (concat (document-delete-ops rep-loc) (document-append-ops rep-loc content)))
 
 (defn-log add-annotation-ops [rep-loc name range value]
-  [(document-modify-ops rep-loc range nil
+  [(document-modify-json rep-loc range nil
                          (assoc 
                              (modify-how-json
                               "ANNOTATE" [value] nil) :annotationKey name))])
 
 (defn-log delete-annotation-ops [rep-loc name range]
-  [(document-modify-ops rep-loc range nil
+  [(document-modify-json rep-loc range nil
                          (assoc 
                              (modify-how-json
                               "CLEAR_ANNOTATION" nil nil) :annotationKey name))])
 
 (defn-log add-annotation-norange-ops [rep-loc name value]
-  [(document-modify-ops rep-loc nil nil
+  [(document-modify-json rep-loc nil nil
                          (assoc 
                              (modify-how-json
                               "ANNOTATE" [value] nil) :annotationKey name))])
@@ -340,16 +340,16 @@ will not be present in the new structure."
    "type" "GADGET"})
 
 (defn-log append-gadget-ops [rep-loc gadget-state]
-  [(document-modify-ops rep-loc nil nil
+  [(document-modify-json rep-loc nil nil
                         (modify-how-json "INSERT_AFTER" nil 
-                                         (gadget-op-json rep-loc gadget-state)))])
+                                         [(gadget-op-json rep-loc gadget-state)]))])
 
 ; @TODO - should check if we should re-do the escaping workaround with the " "
 (defn-log gadget-submit-delta-ops [rep-loc state]
-  [(document-modify-ops rep-loc nil 
-                        (modify-query-json {"url" ("url" state)} 1 "GADGET")
+  [(document-modify-json rep-loc nil 
+                        (modify-query-json {"url" (state "url")} 1 "GADGET")
                         (modify-how-json "UPDATE_ELEMENT" nil 
-                                         (gadget-op-json rep-loc (dissoc state "url"))))])
+                                         [(gadget-op-json rep-loc (dissoc state "url"))]))])
 
 (defn-log blip-create-child-ops [rep-loc content new-id]
   [(assoc-in-x 
