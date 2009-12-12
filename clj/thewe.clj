@@ -310,7 +310,10 @@ will not be present in the new structure."
                          (modify-how-json "DELETE" nil nil))])
 
 (defn-log document-delete-append-ops [rep-loc content]
-  (concat (document-delete-ops rep-loc) (document-append-ops rep-loc content)))
+  ; if there is no blip id this must be a one-way replication so just ignor it
+  (if (:blip-id rep-loc)
+    (concat (document-delete-ops rep-loc) (document-append-ops rep-loc content))
+    []))
 
 (defn-log add-annotation-ops [rep-loc name range value]
   [(document-modify-json rep-loc range nil
@@ -579,7 +582,7 @@ will not be present in the new structure."
 	     (for [rep-key (.split rep-keys ",")]
 	       (let [rep-loc (:rep-loc *ctx*) 
 		     child-rep-loc (assoc rep-loc :blip-id "new-blip")
-		     annotate-str (str "This blip will be replicated to the gadget key " rep-key 
+		     annotate-str (str "\nThis blip will be replicated to the gadget key " rep-key 
 				       ". Anything within this highlighted segment will be ignored during replication.")
 		     key-val (dig *ctx* :gadget-state rep-key)]
 		 
@@ -597,7 +600,7 @@ will not be present in the new structure."
 		   (count annotate-str)
 		   "we/DNR")
      					; mark previous annotation with another one to make sure the user notices it (a color annotation)
-		  (add-annotation-ops child-rep-loc "style/backgroundColor" 0 (count annotate-str) "rgb(255, 153, 0)")
+		  (add-annotation-ops child-rep-loc "style/backgroundColor" (range-json 0 (count annotate-str)) "rgb(255, 153, 0)")
 					; insert current value to blip (if exists)
 		  (if key-val
 		    (document-insert-ops child-rep-loc
