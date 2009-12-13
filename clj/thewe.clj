@@ -362,14 +362,6 @@ will not be present in the new structure."
      (assoc (params (assoc rep-loc :blip-id new-id))
        "content" content))])
 
-(defn-log operation-bundle-json [ops]
-  (concat 
-   [{"params" {"capabilitiesHash" "0xcada92e"} 
-     "method" "robot.notifyCapabilitiesHash"
-     "id" "0"}]
-   ops))                                ; @todo deal with version
-
-
 
 (defmethod update-rep-loc-ops "gadget" [rep-loc content]
   (log (gadget-submit-delta-ops rep-loc 
@@ -475,95 +467,14 @@ will not be present in the new structure."
      (assoc (:rep-loc *ctx*) :type "gadget" :key (str rep-key subkey))))
   (add-string-and-eval-ops (:rep-loc *ctx*) (str `(we/submit-replication-delta ~rep-key))))
 
-(defn-log create-view-dev-replication-generic! [suffix]
-  (let [rep-loc (:rep-loc *ctx*)]
-    (replicate-replocs!
-     (assoc rep-loc :type "gadget" :key "_view.js")
-     (dissoc (assoc rep-loc :subcontent (str  "// " suffix "js")) :blip-id))
-    
-    (replicate-replocs!
-     (assoc rep-loc :type "gadget" :key "_view.html")
-     (dissoc (assoc rep-loc :subcontent (str "<!-- html" suffix " -->")) :blip-id))
-    
-    (replicate-replocs!
-     (assoc rep-loc :type "gadget" :key "_view.css")
-     (dissoc (assoc rep-loc :subcontent (str "/* css" suffix " */")) :blip-id)))
-  [])
-
-(defn-log create-view-dev-replication [] (create-view-dev-replication-generic! ""))
-
-; @TODO this has swap! here -  is there a way to prevent it?
-(defn-log view-dev-this-blip-generic
-  "suffix is what we add to the content of the created blips in order to later identify them for replication by subcontent" 
-  [suffix]
-  (create-view-dev-replication-generic! suffix)
-  (let [rep-loc (:rep-loc *ctx*)]
-    (concat 
-     (append-gadget-ops rep-loc 
-                        {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
-                         "author" "avital@wavesandbox.com"
-                         "_view.js" "// js"
-                         "_view.html" "<!-- html -->"
-                         "_view.css" "/* css */"
-                         "_rep-loc.waveId" (rep-loc :wave-id)
-                         "_rep-loc.waveletId" (rep-loc :wavelet-id)
-                         "_rep-loc.blipId" (rep-loc :blip-id)})
-     (blip-create-child-ops rep-loc "" "html")
-     (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
-     (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
-     (document-delete-append-ops (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
-     (document-delete-append-ops (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
-     (document-delete-append-ops (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
-
-; @TODO this has swap! here -  is there a way to prevent it?
-(defn-log view-dev-this-blip-generic2
-  "suffix is what we add to the content of the created blips in order to later identify them for replication by subcontent" 
-  [suffix]
-  (create-view-dev-replication-generic! suffix)
-  (let [rep-loc (:rep-loc *ctx*)]
-    (concat 
-     (append-gadget-ops rep-loc 
-		       {"url" "http://wave.thewe.net/gadgets/thewe-ggg/thewe-ggg.xml",
-			"author" "avital@wavesandbox.com"
-			"_view.js" ""
-			"_view.html" ""
-			"_view.css" ""
-			;"f1._view.html" ""
-			;"f1._view.css" ""
-			;"f1._view.js" ""
-			"_rep-loc.waveId" (rep-loc :wave-id)
-			"_rep-loc.waveletId" (rep-loc :wavelet-id)
-			"_rep-loc.blipId" (rep-loc :blip-id)})
-     (blip-create-child-ops rep-loc "" "html")
-     (blip-create-child-ops (assoc rep-loc :blip-id "html") "" "css")
-     (blip-create-child-ops (assoc rep-loc :blip-id "css") "" "js")
-     (document-delete-append-ops (assoc rep-loc :blip-id "html") (str "<!-- html" suffix " -->"))
-     (document-delete-append-ops (assoc rep-loc :blip-id "css") (str "/* css" suffix " */"))
-     (document-delete-append-ops (assoc rep-loc :blip-id "js") (str "// " suffix "js")))))
-
-
-(defn-log view-dev-this-blip [] (view-dev-this-blip-generic ""))
-
-(defn-log view-dev-annotate-blip []
-  (let [rep-loc (:rep-loc *ctx*) 
-	str-to-annotate "(we/view-dev-this-blip-generic2 \"2\")"]
-    (concat 
-     (blip-create-child-ops rep-loc "" "view-dev")
-     (add-string-and-eval-ops (assoc rep-loc :blip-id "view-dev") str-to-annotate))))
 
 ;;; Utilities for gadget-initiated replication
+
 (defn-log handle-to-key []
   (if-let [to-key ((:gadget-state *ctx*) "to-key")]
    (when (not= to-key "*")
       (reset! *clipboard* {:rep-loc (:rep-loc *ctx*) :to-key to-key})
       (gadget-submit-delta-ops (:rep-loc *ctx*) {"to-key" "*" "url" ((:gadget-state *ctx*) "url")}))))
-
-;;;; ***
-(comment (doseq [[key val] (:gadget-state *ctx*) 
-		:when (or (= key from-key) (.startsWith key (str from-key ".")))]
-	  (replicate-replocs! (assoc source-rep-loc :type "gadget" :key (.replaceFirst key from-key to-key))
-			      (assoc (:rep-loc *ctx*) :type "gadget" :key key))))
-;;; ***
 
 (defn-log handle-from-key []
   (if-let [from-key ((:gadget-state *ctx*) "from-key")]  
@@ -655,7 +566,7 @@ will not be present in the new structure."
 
 (defn-log run-function-do-operations [events-map] ; this is the signature of a function that can be called by adding + to a robot's address
   (sfirst ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us
-   (iterate-events events-map "DOCUMENT_CHANGED"     
+   (iterate-events events-map "ANNOTATED_TEXT_CHANGED"     
 		   (apply concat 
 			  (for [annotation (:annotations *ctx*) 		  
 				:when (not= -1 (dig annotation "range" "start"))
@@ -668,11 +579,6 @@ will not be present in the new structure."
 			       (try (eval (read-string (subs (:content *ctx*) start end)))
 				    (catch Throwable t 
 				      (log-exception t) (echo t))))))))))
-
-
-(defn-log view-dev [events-map]
-  (first ; this is the solution for now as there is probably no more than one evaluated expression in each event sent to us     
-   (iterate-events events-map "WAVELET_SELF_ADDED" (view-dev-this-blip))))
 
 (defn-log allow-gadget-replication [events-map]
   (apply concat (iterate-events events-map "BLIP_SUBMITTED" (handle-gadget-rep))))
@@ -702,10 +608,10 @@ will not be present in the new structure."
 (defn answer-wave [events-map]
   (json-str
    (log-info "Operations" (log (wave-attempt
-                             (operation-bundle-json ((ns-resolve 'we
-                                                                 (read-string
-                                                                  ((read-json (events-map "proxyingFor")) "action"))) 
-                                                     events-map)))))))
+				((ns-resolve 'we
+					     (read-string
+					      ((read-json (events-map "proxyingFor")) "action"))) 
+				 events-map))))))
 
 
 
