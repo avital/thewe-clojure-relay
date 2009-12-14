@@ -12,7 +12,7 @@
 
 ; Atom File DB
 
-(def atom-base-dir "/home/avital/swank/db")
+(def atom-base-dir)
 
 (defn atom-filename [name]
   (str atom-base-dir name))
@@ -50,11 +50,6 @@
         (alter-var-root #'*db-atoms* assoc '~name ~name)
         ~`(init-atoms ~@rest))))
 
-(init-atoms *rep-rules* #{}
-            *clipboard* nil
-            *last-clipboard* nil
-            *other-wave* nil
-	    *mixin-db* {})
 
 
 ; Saving Atoms
@@ -79,9 +74,16 @@
 
 (defonce save-periodically false)
 
-(when-not save-periodically
-  (periodicly save-atoms 25000)
-  (def save-periodically true))
+(defn start-atom-db [base-dir]
+  (def atom-base-dir base-dir)
+  (init-atoms *rep-rules* #{}
+	      *clipboard* nil
+	      *last-clipboard* nil
+	      *other-wave* nil
+	      *mixin-db* {})
+  (when-not save-periodically
+    (periodicly save-atoms 25000)
+    (def save-periodically true)))
 
 
 

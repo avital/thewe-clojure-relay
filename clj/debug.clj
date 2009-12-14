@@ -159,7 +159,7 @@
   `(try ~expr 
 	(catch Throwable t#
 	  (log-exception t#)
-	  (operation-bundle-json []))))
+	  [])))
 
 (defn log-info [title x]
   (append-spit "/home/avital/swank/log/operations"
